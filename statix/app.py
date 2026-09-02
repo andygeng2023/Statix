@@ -1,321 +1,509 @@
 import streamlit as st
 import plotly.graph_objects as go
 
-from market_data import get_stock_data
-from prediction import create_features, train_model, predict_next
-from backtest import walk_forward_backtest
+from market_data import (
+    get_stock_data,
+    get_quote,
+)
+
+from prediction import (
+    create_features,
+    train_model,
+    predict,
+)
+
+from backtest import fast_backtest
 
 
-# --------------------------------------------------
-# Page configuration
-# --------------------------------------------------
+# ==================================================
+# CONFIG
+# ==================================================
 
 st.set_page_config(
-    page_title="Stock Prediction Lab",
+    page_title="Stock Predictor",
     page_icon="📈",
     layout="wide",
 )
 
 
-# --------------------------------------------------
-# Title
-# --------------------------------------------------
+# ==================================================
+# SESSION STATE
+# ==================================================
 
-st.title("Stock Prediction Lab")
+if "watchlist" not in st.session_state:
+    st.session_state.watchlist = []
 
-st.write(
-    "Experimental machine-learning stock prediction dashboard."
-)
-
-st.warning(
-    "Predictions are experimental estimates and are not financial advice."
-)
+if "page" not in st.session_state:
+    st.session_state.page = "Home"
 
 
-# --------------------------------------------------
-# Sidebar
-# --------------------------------------------------
+# ==================================================
+# HELPERS
+# ==================================================
 
-st.sidebar.header("Settings")
+def add_to_watchlist(ticker):
 
-ticker = st.sidebar.text_input(
-    "Stock ticker",
-    value="AAPL"
-).upper().strip()
-
-period = st.sidebar.selectbox(
-    "Historical data",
-    ["1y", "2y", "5y", "10y"],
-    index=2,
-)
-
-horizon = st.sidebar.selectbox(
-    "Prediction horizon",
-    [1, 3, 5, 10, 20],
-    index=2,
-)
-
-run_backtest = st.sidebar.checkbox(
-    "Run backtest",
-    value=True,
-)
-
-analyze = st.sidebar.button(
-    "Analyze stock",
-    type="primary",
-)
+    if ticker not in st.session_state.watchlist:
+        st.session_state.watchlist.append(ticker)
 
 
-# --------------------------------------------------
-# Main application
-# --------------------------------------------------
+def remove_from_watchlist(ticker):
 
-if analyze:
+    if ticker in st.session_state.watchlist:
+        st.session_state.watchlist.remove(ticker)
+
+
+def show_chart(ticker):
+
+    data = get_stock_data(
+        ticker,
+        period="1y",
+    )
+
+    data = data.tail(180)
+
+    fig = go.Figure()
+
+    fig.add_trace(
+        go.Scatter(
+            x=data.index,
+            y=data["Close"],
+            mode="lines",
+            name=ticker,
+        )
+    )
+
+    fig.update_layout(
+        height=180,
+        margin=dict(
+            l=5,
+            r=5,
+            t=5,
+            b=5,
+        ),
+        xaxis_title=None,
+        yaxis_title=None,
+        showlegend=False,
+    )
+
+    st.plotly_chart(
+        fig,
+        use_container_width=True,
+        config={
+            "displayModeBar": False
+        },
+    )
+
+
+def stock_preview(ticker):
 
     try:
 
-        # ------------------------------------------
-        # Download data
-        # ------------------------------------------
+        quote = get_quote(ticker)
 
-        with st.spinner("Downloading market data..."):
+        change = (
+            quote["percentage"] * 100
+        )
 
-            data = get_stock_data(
-                ticker,
-                period=period,
+        st.markdown(
+            f"### {ticker}"
+        )
+
+        st.metric(
+            "Price",
+            f"${quote['price']:.2f}",
+            f"{change:.2f}%",
+        )
+
+        show_chart(ticker)
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+
+            if st.button(
+                "Open",
+                key=f"open_{ticker}",
+            ):
+                st.session_state.selected = ticker
+                st.session_state.page = "Search"
+                st.rerun()
+
+        with col2:
+
+            if ticker in st.session_state.watchlist:
+
+                if st.button(
+                    "Remove",
+                    key=f"remove_{ticker}",
+                ):
+                    remove_from_watchlist(ticker)
+                    st.rerun()
+
+            else:
+
+                if st.button(
+                    "Add",
+                    key=f"add_{ticker}",
+                ):
+                    add_to_watchlist(ticker)
+                    st.rerun()
+
+    except Exception:
+
+        st.error(
+            f"Unable to load {ticker}"
+        )
+
+
+# ==================================================
+# NAVIGATION
+# ==================================================
+
+st.title("Stock Predictor")
+
+nav1, nav2, nav3 = st.columns(3)
+
+with nav1:
+
+    if st.button(
+        "Home",
+        use_container_width=True,
+    ):
+        st.session_state.page = "Home"
+        st.rerun()
+
+with nav2:
+
+    if st.button(
+        "Watchlist",
+        use_container_width=True,
+    ):
+        st.session_state.page = "Watchlist"
+        st.rerun()
+
+with nav3:
+
+    if st.button(
+        "Search",
+        use_container_width=True,
+    ):
+        st.session_state.page = "Search"
+        st.rerun()
+
+
+st.divider()
+
+
+# ==================================================
+# HOME
+# ==================================================
+
+if st.session_state.page == "Home":
+
+    st.header("Market Dashboard")
+
+    st.write(
+        "Search a stock or select one from your watchlist."
+    )
+
+    search = st.text_input(
+        "Quick search",
+        placeholder="Enter ticker, e.g. AAPL",
+    )
+
+    if search:
+
+        ticker = search.upper().strip()
+
+        try:
+
+            quote = get_quote(ticker)
+
+            st.subheader(ticker)
+
+            col1, col2, col3 = st.columns(3)
+
+            col1.metric(
+                "Price",
+                f"${quote['price']:.2f}",
+            )
+
+            col2.metric(
+                "Daily change",
+                f"{quote['percentage']:.2%}",
+            )
+
+            col3.metric(
+                "Change",
+                f"${quote['change']:.2f}",
+            )
+
+            if st.button(
+                "Analyze prediction",
+                type="primary",
+            ):
+                st.session_state.selected = ticker
+                st.session_state.page = "Search"
+                st.rerun()
+
+        except Exception:
+
+            st.error(
+                "Stock not found. Try another ticker."
             )
 
 
-        # ------------------------------------------
-        # Create prediction features
-        # ------------------------------------------
+    st.subheader("Watchlist")
 
-        with st.spinner("Creating features..."):
+    if not st.session_state.watchlist:
 
-            df = create_features(
+        st.info(
+            "Your watchlist is empty."
+        )
+
+    else:
+
+        columns = st.columns(3)
+
+        for i, ticker in enumerate(
+            st.session_state.watchlist
+        ):
+
+            with columns[i % 3]:
+
+                stock_preview(ticker)
+
+
+# ==================================================
+# WATCHLIST
+# ==================================================
+
+elif st.session_state.page == "Watchlist":
+
+    st.header("My Watchlist")
+
+    if not st.session_state.watchlist:
+
+        st.info(
+            "Add stocks from Search or Home."
+        )
+
+    else:
+
+        columns = st.columns(3)
+
+        for i, ticker in enumerate(
+            st.session_state.watchlist
+        ):
+
+            with columns[i % 3]:
+
+                stock_preview(ticker)
+
+
+# ==================================================
+# SEARCH / PREDICTION
+# ==================================================
+
+elif st.session_state.page == "Search":
+
+    st.header("Search")
+
+    default = st.session_state.get(
+        "selected",
+        "",
+    )
+
+    ticker = st.text_input(
+        "Ticker",
+        value=default,
+        placeholder="AAPL",
+    ).upper().strip()
+
+
+    if ticker:
+
+        try:
+
+            data = get_stock_data(
+                ticker,
+                period="2y",
+            )
+
+            st.subheader(ticker)
+
+            quote = get_quote(ticker)
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+
+                st.metric(
+                    "Current price",
+                    f"${quote['price']:.2f}",
+                )
+
+            with col2:
+
+                st.metric(
+                    "Daily change",
+                    f"{quote['percentage']:.2%}",
+                )
+
+
+            # --------------------------------------
+            # Watchlist
+            # --------------------------------------
+
+            if ticker in st.session_state.watchlist:
+
+                if st.button(
+                    "Remove from watchlist"
+                ):
+                    remove_from_watchlist(ticker)
+                    st.rerun()
+
+            else:
+
+                if st.button(
+                    "Add to watchlist"
+                ):
+                    add_to_watchlist(ticker)
+                    st.rerun()
+
+
+            # --------------------------------------
+            # Chart
+            # --------------------------------------
+
+            st.subheader("Price")
+
+            fig = go.Figure()
+
+            fig.add_trace(
+                go.Candlestick(
+                    x=data.index,
+                    open=data["Open"],
+                    high=data["High"],
+                    low=data["Low"],
+                    close=data["Close"],
+                    name=ticker,
+                )
+            )
+
+            fig.update_layout(
+                height=500,
+                xaxis_rangeslider_visible=False,
+            )
+
+            st.plotly_chart(
+                fig,
+                use_container_width=True,
+            )
+
+
+            # --------------------------------------
+            # Prediction
+            # --------------------------------------
+
+            st.subheader(
+                "Prediction"
+            )
+
+            horizon = st.selectbox(
+                "Prediction horizon",
+                [1, 3, 5, 10, 20],
+                index=2,
+            )
+
+            features = create_features(
                 data,
                 horizon=horizon,
             )
 
+            if len(features) < 250:
 
-        if len(df) < 300:
+                st.warning(
+                    "Not enough data for this model."
+                )
+
+            else:
+
+                with st.spinner(
+                    "Calculating prediction..."
+                ):
+
+                    model, accuracy = (
+                        train_model(features)
+                    )
+
+                    result = predict(
+                        model,
+                        features,
+                    )
+
+
+                p1, p2, p3 = st.columns(3)
+
+                p1.metric(
+                    "Direction",
+                    result["direction"],
+                )
+
+                p2.metric(
+                    "Probability UP",
+                    f"{result['probability_up']:.1%}",
+                )
+
+                p3.metric(
+                    "Model accuracy",
+                    f"{accuracy:.1%}",
+                )
+
+
+                if result["probability_up"] >= 0.60:
+
+                    st.success(
+                        "Model currently favors an upward move."
+                    )
+
+                elif result["probability_up"] <= 0.40:
+
+                    st.error(
+                        "Model currently favors a downward move."
+                    )
+
+                else:
+
+                    st.info(
+                        "Model signal is relatively uncertain."
+                    )
+
+
+                # ----------------------------------
+                # Fast backtest
+                # ----------------------------------
+
+                with st.expander(
+                    "Model validation"
+                ):
+
+                    backtest = fast_backtest(
+                        features
+                    )
+
+                    st.write(
+                        "Chronological validation accuracy:"
+                    )
+
+                    st.write(
+                        f"{backtest['accuracy']:.1%}"
+                    )
+
+
+        except Exception as error:
 
             st.error(
-                "There is not enough historical data "
-                "for this analysis."
+                f"Unable to analyze {ticker}: {error}"
             )
-
-            st.stop()
-
-
-        # ------------------------------------------
-        # Train model
-        # ------------------------------------------
-
-        with st.spinner("Training prediction model..."):
-
-            model, accuracy = train_model(df)
-
-
-        # ------------------------------------------
-        # Generate prediction
-        # ------------------------------------------
-
-        prediction = predict_next(
-            df,
-            model,
-        )
-
-
-        # ------------------------------------------
-        # Current price
-        # ------------------------------------------
-
-        current_price = float(
-            data["Close"].iloc[-1]
-        )
-
-
-        # ------------------------------------------
-        # Display main metrics
-        # ------------------------------------------
-
-        st.header(ticker)
-
-        col1, col2, col3, col4 = st.columns(4)
-
-        col1.metric(
-            "Current price",
-            f"${current_price:.2f}",
-        )
-
-        col2.metric(
-            "Prediction",
-            prediction["direction"],
-        )
-
-        col3.metric(
-            "Probability UP",
-            f"{prediction['probability_up']:.1%}",
-        )
-
-        col4.metric(
-            "Test accuracy",
-            f"{accuracy:.1%}",
-        )
-
-
-        # ------------------------------------------
-        # Price chart
-        # ------------------------------------------
-
-        st.subheader("Price history")
-
-        chart_data = data.tail(365)
-
-        fig = go.Figure()
-
-        fig.add_trace(
-            go.Candlestick(
-                x=chart_data.index,
-                open=chart_data["Open"],
-                high=chart_data["High"],
-                low=chart_data["Low"],
-                close=chart_data["Close"],
-                name=ticker,
-            )
-        )
-
-        fig.update_layout(
-            height=550,
-            xaxis_rangeslider_visible=False,
-        )
-
-        st.plotly_chart(
-            fig,
-            use_container_width=True,
-        )
-
-
-        # ------------------------------------------
-        # Prediction details
-        # ------------------------------------------
-
-        st.subheader(
-            f"{horizon}-Trading-Day Prediction"
-        )
-
-        p1, p2 = st.columns(2)
-
-        with p1:
-
-            st.metric(
-                "Direction",
-                prediction["direction"],
-            )
-
-            st.write(
-                f"Probability of UP: "
-                f"**{prediction['probability_up']:.2%}**"
-            )
-
-            st.write(
-                f"Probability of DOWN: "
-                f"**{prediction['probability_down']:.2%}**"
-            )
-
-
-        with p2:
-
-            st.write(
-                "Model: **Random Forest Classifier**"
-            )
-
-            st.write(
-                "Prediction target: "
-                f"price direction after {horizon} "
-                "trading days."
-            )
-
-
-        # ------------------------------------------
-        # Backtest
-        # ------------------------------------------
-
-        if run_backtest:
-
-            st.subheader(
-                "Walk-Forward Backtest"
-            )
-
-            with st.spinner(
-                "Running historical backtest..."
-            ):
-
-                results, backtest_accuracy = (
-                    walk_forward_backtest(
-                        df,
-                        horizon=horizon,
-                    )
-                )
-
-
-            b1, b2, b3 = st.columns(3)
-
-            b1.metric(
-                "Directional accuracy",
-                f"{backtest_accuracy:.1%}",
-            )
-
-            b2.metric(
-                "Predictions tested",
-                len(results),
-            )
-
-            b3.metric(
-                "Average probability UP",
-                f"{results['probability_up'].mean():.1%}",
-            )
-
-
-            # --------------------------------------
-            # Backtest chart
-            # --------------------------------------
-
-            st.subheader(
-                "Predictions vs. Actual Direction"
-            )
-
-            chart = results.set_index("date")[
-                ["actual", "prediction"]
-            ]
-
-            st.line_chart(chart)
-
-
-            # --------------------------------------
-            # Raw results
-            # --------------------------------------
-
-            with st.expander(
-                "Show backtest results"
-            ):
-
-                st.dataframe(
-                    results,
-                    use_container_width=True,
-                )
-
-
-    except Exception as error:
-
-        st.error(
-            f"Something went wrong: {error}"
-        )
-
-
-else:
-
-    st.info(
-        "Enter a ticker and click **Analyze stock**."
-    )

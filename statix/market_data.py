@@ -1,27 +1,14 @@
 import pandas as pd
 import yfinance as yf
+import streamlit as st
 
 
-def get_stock_data(ticker, period="5y"):
-    """
-    Download historical daily stock data.
-
-    Parameters
-    ----------
-    ticker : str
-        Stock ticker, e.g. "AAPL"
-    period : str
-        yfinance period, e.g. "1y", "5y", "10y"
-
-    Returns
-    -------
-    pandas.DataFrame
-    """
-
+@st.cache_data(ttl=300)
+def get_stock_data(
+    ticker,
+    period="2y",
+):
     ticker = ticker.upper().strip()
-
-    if not ticker:
-        raise ValueError("Ticker cannot be empty.")
 
     data = yf.download(
         ticker,
@@ -33,15 +20,19 @@ def get_stock_data(ticker, period="5y"):
 
     if data.empty:
         raise ValueError(
-            f"No data found for '{ticker}'. "
-            "Check that the ticker is correct."
+            f"No data found for {ticker}"
         )
 
-    # Some yfinance versions return multi-level columns.
-    if isinstance(data.columns, pd.MultiIndex):
-        data.columns = data.columns.get_level_values(0)
+    if isinstance(
+        data.columns,
+        pd.MultiIndex,
+    ):
+        data.columns = (
+            data.columns
+            .get_level_values(0)
+        )
 
-    required_columns = [
+    columns = [
         "Open",
         "High",
         "Low",
@@ -49,19 +40,34 @@ def get_stock_data(ticker, period="5y"):
         "Volume",
     ]
 
-    missing = [
-        column
-        for column in required_columns
-        if column not in data.columns
-    ]
-
-    if missing:
-        raise ValueError(
-            f"Missing market-data columns: {missing}"
-        )
-
-    data = data[required_columns].copy()
-
-    data = data.dropna()
+    data = data[columns].dropna()
 
     return data
+
+
+@st.cache_data(ttl=300)
+def get_quote(ticker):
+    data = get_stock_data(
+        ticker,
+        period="5d",
+    )
+
+    latest = float(
+        data["Close"].iloc[-1]
+    )
+
+    previous = float(
+        data["Close"].iloc[-2]
+    )
+
+    change = latest - previous
+
+    percentage = (
+        change / previous
+    )
+
+    return {
+        "price": latest,
+        "change": change,
+        "percentage": percentage,
+    }
