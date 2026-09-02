@@ -1,216 +1,78 @@
 import streamlit as st
 
-from src.data.market import (
-    get_quote,
-    get_stock_data,
-)
-
+from src.data.market import get_quote, get_stock_data
 from src.storage.database import (
-    get_recently_viewed,
     get_watchlist,
-)
-
-from src.ui.components import (
-    mini_chart,
+    get_recently_viewed,
 )
 
 
-st.markdown(
-    '<div class="statix-title">Statix</div>',
-    unsafe_allow_html=True,
-)
-
-st.markdown(
-    '<div class="statix-subtitle">'
-    "Predictive market intelligence"
-    "</div>",
-    unsafe_allow_html=True,
+st.title("Statix")
+st.caption(
+    "Market intelligence and machine-learning predictions."
 )
 
 
-# -------------------------
+# --------------------------------------------------
 # Quick actions
-# -------------------------
+# --------------------------------------------------
 
-c1, c2 = st.columns(2)
+col1, col2 = st.columns(2)
 
-with c1:
+with col1:
     if st.button(
         "Search up a stock",
         use_container_width=True,
-        type="primary",
     ):
-        st.switch_page(
-            "pages/search.py"
-        )
+        st.switch_page("pages/search.py")
 
-with c2:
+with col2:
     if st.button(
         "Open Watchlist",
         use_container_width=True,
     ):
-        st.switch_page(
-            "pages/watchlist.py"
-        )
+        st.switch_page("pages/watchlist.py")
 
 
-st.divider()
-
-
-# -------------------------
-# Watchlist
-# -------------------------
-
-watchlist = get_watchlist()
-
-st.subheader("Your Watchlist")
-
-if not watchlist:
-
-    st.info(
-        "Your watchlist is empty."
-    )
-
-    st.page_link(
-        "pages/search.py",
-        label="Search stocks",
-    )
-
-else:
-
-    for ticker in watchlist[:6]:
-
-        with st.container(
-            border=True
-        ):
-
-            try:
-                quote = get_quote(
-                    ticker
-                )
-
-                data = get_stock_data(
-                    ticker,
-                    period="3mo",
-                )
-
-                c1, c2 = st.columns(
-                    [2, 4]
-                )
-
-                with c1:
-                    st.subheader(
-                        ticker
-                    )
-
-                    st.metric(
-                        "Price",
-                        (
-                            f"${quote['price']:,.2f}"
-                        ),
-                        (
-                            f"{quote['change_pct'] * 100:+.2f}%"
-                        ),
-                    )
-
-                with c2:
-                    st.plotly_chart(
-                        mini_chart(data),
-                        use_container_width=True,
-                        config={
-                            "displayModeBar": False
-                        },
-                    )
-
-            except Exception as error:
-                st.error(
-                    f"{ticker}: {error}"
-                )
-
-
-# -------------------------
+# --------------------------------------------------
 # Discover
-# -------------------------
+# --------------------------------------------------
 
 st.divider()
 
-st.subheader("Discover")
-
-st.caption(
-    "Explore commonly followed market symbols."
-)
+st.header("Discover")
 
 discover = [
-    (
-        "AAPL",
-        "Apple",
-    ),
-    (
-        "MSFT",
-        "Microsoft",
-    ),
-    (
-        "NVDA",
-        "NVIDIA",
-    ),
-    (
-        "AMZN",
-        "Amazon",
-    ),
-    (
-        "GOOGL",
-        "Alphabet",
-    ),
-    (
-        "META",
-        "Meta",
-    ),
-    (
-        "TSLA",
-        "Tesla",
-    ),
-    (
-        "SPY",
-        "S&P 500 ETF",
-    ),
+    "AAPL",
+    "MSFT",
+    "NVDA",
+    "AMZN",
+    "GOOGL",
+    "META",
+    "TSLA",
+    "SPY",
 ]
 
+cols = st.columns(4)
 
-columns = st.columns(4)
+for index, ticker in enumerate(discover):
 
-for index, (
-    ticker,
-    name,
-) in enumerate(discover):
+    with cols[index % 4]:
 
-    with columns[index % 4]:
+        quote = get_quote(ticker)
 
-        with st.container(
-            border=True
-        ):
+        with st.container(border=True):
 
-            st.markdown(
-                f"**{ticker}**"
-            )
+            st.subheader(ticker)
 
-            st.caption(name)
-
-            try:
-                quote = get_quote(
-                    ticker
+            if quote["price"] is not None:
+                st.write(
+                    f"${quote['price']:,.2f}"
                 )
 
-                st.metric(
-                    "Price",
-                    f"${quote['price']:,.2f}",
-                    (
-                        f"{quote['change_pct'] * 100:+.2f}%"
-                    ),
-                )
-
-            except Exception:
+            if quote["change_pct"] is not None:
                 st.caption(
-                    "Quote unavailable"
+                    f"{quote['change_pct']:+.2f}% today"
                 )
 
             if st.button(
@@ -218,76 +80,104 @@ for index, (
                 key=f"discover_{ticker}",
                 use_container_width=True,
             ):
-                st.session_state[
-                    "selected_ticker"
-                ] = ticker
-
-                st.switch_page(
-                    "pages/prediction.py"
-                )
+                st.session_state["selected_ticker"] = ticker
+                st.switch_page("pages/prediction.py")
 
 
-# -------------------------
-# Recently viewed
-# -------------------------
+# --------------------------------------------------
+# Watchlist
+# --------------------------------------------------
 
-recent = get_recently_viewed(
-    limit=8
-)
+st.divider()
 
-if recent:
+st.header("Your Watchlist")
 
-    st.divider()
+watchlist = get_watchlist()
 
-    st.subheader(
-        "Recently Viewed"
-    )
+if not watchlist:
 
-    columns = st.columns(4)
+    st.caption("No stocks saved yet.")
 
-    for index, item in enumerate(
-        recent
-    ):
+else:
 
-        with columns[index % 4]:
+    cols = st.columns(min(3, len(watchlist)))
 
-            with st.container(
-                border=True
-            ):
+    for index, ticker in enumerate(watchlist[:6]):
 
-                st.markdown(
-                    f"### {item['ticker']}"
-                )
+        with cols[index % len(cols)]:
 
-                st.caption(
-                    item["direction"]
-                    or "No prediction"
-                )
+            quote = get_quote(ticker)
 
-                if (
-                    item[
-                        "probability_up"
-                    ]
-                    is not None
-                ):
-                    st.metric(
-                        "Up Probability",
-                        (
-                            f"{item['probability_up'] * 100:.1f}%"
-                        ),
+            with st.container(border=True):
+
+                st.subheader(ticker)
+
+                if quote["price"] is not None:
+                    st.write(
+                        f"${quote['price']:,.2f}"
+                    )
+
+                if quote["change_pct"] is not None:
+                    st.caption(
+                        f"{quote['change_pct']:+.2f}%"
                     )
 
                 if st.button(
                     "Open",
-                    key=(
-                        f"recent_{item['ticker']}"
-                    ),
+                    key=f"watch_{ticker}",
                     use_container_width=True,
                 ):
-                    st.session_state[
-                        "selected_ticker"
-                    ] = item["ticker"]
+                    st.session_state["selected_ticker"] = ticker
+                    st.switch_page("pages/prediction.py")
 
-                    st.switch_page(
-                        "pages/prediction.py"
-                    )
+
+# --------------------------------------------------
+# Recently viewed
+# --------------------------------------------------
+
+st.divider()
+
+st.header("Recently Viewed")
+
+recent = get_recently_viewed()
+
+if not recent:
+
+    st.caption(
+        "Stocks you analyze will appear here."
+    )
+
+else:
+
+    for item in recent:
+
+        ticker = item["ticker"]
+
+        with st.container(border=True):
+
+            left, middle, right = st.columns(
+                [2, 3, 1]
+            )
+
+            with left:
+                st.subheader(ticker)
+
+            with middle:
+                st.write(
+                    item["direction"]
+                )
+
+                st.caption(
+                    f"Up probability: "
+                    f"{item['probability_up'] * 100:.1f}%"
+                )
+
+            with right:
+
+                if st.button(
+                    "Open",
+                    key=f"recent_{ticker}",
+                    use_container_width=True,
+                ):
+                    st.session_state["selected_ticker"] = ticker
+                    st.switch_page("pages/prediction.py")

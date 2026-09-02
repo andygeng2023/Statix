@@ -1,144 +1,97 @@
 import streamlit as st
 
-from src.data.market import (
-    get_quote,
-    get_stock_data,
-)
-
-from src.data.search import (
-    search_stocks,
-)
-
+from src.data.search import search_stocks
+from src.data.market import get_quote
 from src.storage.database import (
     add_to_watchlist,
-    is_watched,
     remove_from_watchlist,
+    is_watched,
 )
 
 
 st.title("Search")
-
-st.markdown(
-    "Search by company name or ticker."
-)
+st.caption("Find stocks, ETFs, and companies.")
 
 
 query = st.text_input(
     "Search",
-    placeholder=(
-        "Apple, Microsoft, AAPL..."
-    ),
+    placeholder="Try Apple, Microsoft, NVDA, Tesla...",
 )
 
 
-if query:
+if query.strip():
 
-    with st.spinner(
-        "Searching..."
-    ):
-        results = search_stocks(
-            query
-        )
+    results = search_stocks(query)
 
     if not results:
         st.warning(
-            "No matching stocks found."
+            "No matching stocks were found."
         )
 
-    else:
+    for result in results:
 
-        st.subheader(
-            "Search Results"
-        )
+        ticker = result["symbol"]
+        name = result["name"]
+        exchange = result.get("exchange", "")
 
-        for result in results:
+        quote = get_quote(ticker)
 
-            ticker = result[
-                "symbol"
-            ]
+        with st.container(border=True):
 
-            with st.container(
-                border=True
-            ):
+            col1, col2, col3 = st.columns(
+                [4, 2, 2]
+            )
 
-                c1, c2, c3 = st.columns(
-                    [4, 2, 1]
+            with col1:
+
+                st.subheader(
+                    f"{ticker}"
                 )
 
-                with c1:
+                st.caption(
+                    f"{name} • {exchange}"
+                )
 
-                    st.subheader(
-                        f"{ticker} — "
-                        f"{result['name']}"
+                if quote["price"] is not None:
+                    st.write(
+                        f"${quote['price']:,.2f}"
                     )
 
-                    st.caption(
-                        f"{result['exchange']} · "
-                        f"{result['type']}"
+            with col2:
+
+                if quote["change_pct"] is not None:
+                    st.metric(
+                        "Today",
+                        f"{quote['change_pct']:+.2f}%",
                     )
 
-                try:
+            with col3:
 
-                    quote = get_quote(
-                        ticker
-                    )
+                if is_watched(ticker):
 
-                    with c2:
-
-                        st.metric(
-                            "Price",
-                            (
-                                f"${quote['price']:,.2f}"
-                            ),
-                            (
-                                f"{quote['change_pct'] * 100:+.2f}%"
-                            ),
-                        )
-
-                except Exception:
-
-                    with c2:
-                        st.caption(
-                            "Quote unavailable"
-                        )
-
-                with c3:
-
-                    if is_watched(
-                        ticker
+                    if st.button(
+                        "Remove",
+                        key=f"remove_search_{ticker}",
+                        use_container_width=True,
                     ):
+                        remove_from_watchlist(ticker)
+                        st.rerun()
 
-                        if st.button(
-                            "Remove",
-                            key=(
-                                f"remove_{ticker}"
-                            ),
-                        ):
-                            remove_from_watchlist(
-                                ticker
-                            )
-                            st.rerun()
+                else:
 
-                    else:
-
-                        if st.button(
-                            "Add",
-                            key=(
-                                f"add_{ticker}"
-                            ),
-                        ):
-                            add_to_watchlist(
-                                ticker
-                            )
-                            st.rerun()
+                    if st.button(
+                        "Add",
+                        key=f"add_search_{ticker}",
+                        use_container_width=True,
+                    ):
+                        add_to_watchlist(ticker)
+                        st.rerun()
 
                 if st.button(
                     "Analyze",
-                    key=(
-                        f"analyze_{ticker}"
-                    ),
+                    key=f"analyze_search_{ticker}",
+                    use_container_width=True,
                 ):
-
                     st.session_state[
                         "selected_ticker"
                     ] = ticker
@@ -148,105 +101,48 @@ if query:
                     )
 
 
-# -------------------------
-# Discover
-# -------------------------
-
 st.divider()
 
-st.subheader(
-    "Discover"
-)
-
-st.caption(
-    "Start with one of these commonly followed symbols."
-)
-
+st.header("Discover")
 
 discover = [
-    (
-        "AAPL",
-        "Apple",
-    ),
-    (
-        "MSFT",
-        "Microsoft",
-    ),
-    (
-        "NVDA",
-        "NVIDIA",
-    ),
-    (
-        "AMZN",
-        "Amazon",
-    ),
-    (
-        "GOOGL",
-        "Alphabet",
-    ),
-    (
-        "META",
-        "Meta",
-    ),
-    (
-        "TSLA",
-        "Tesla",
-    ),
-    (
-        "SPY",
-        "S&P 500 ETF",
-    ),
+    "AAPL",
+    "MSFT",
+    "NVDA",
+    "AMZN",
+    "GOOGL",
+    "META",
+    "TSLA",
+    "SPY",
 ]
 
+cols = st.columns(4)
 
-columns = st.columns(4)
+for index, ticker in enumerate(discover):
 
+    with cols[index % 4]:
 
-for index, (
-    ticker,
-    name,
-) in enumerate(discover):
+        quote = get_quote(ticker)
 
-    with columns[index % 4]:
+        with st.container(border=True):
 
-        with st.container(
-            border=True
-        ):
+            st.subheader(ticker)
 
-            st.markdown(
-                f"**{ticker}**"
-            )
-
-            st.caption(name)
-
-            try:
-
-                quote = get_quote(
-                    ticker
+            if quote["price"] is not None:
+                st.write(
+                    f"${quote['price']:,.2f}"
                 )
 
-                st.metric(
-                    "Price",
-                    f"${quote['price']:,.2f}",
-                    (
-                        f"{quote['change_pct'] * 100:+.2f}%"
-                    ),
-                )
-
-            except Exception:
-
+            if quote["change_pct"] is not None:
                 st.caption(
-                    "Quote unavailable"
+                    f"{quote['change_pct']:+.2f}%"
                 )
 
             if st.button(
                 "Analyze",
-                key=(
-                    f"search_discover_{ticker}"
-                ),
+                key=f"search_discover_{ticker}",
                 use_container_width=True,
             ):
-
                 st.session_state[
                     "selected_ticker"
                 ] = ticker

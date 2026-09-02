@@ -5,5 +5,4 @@ numpy
 scikit-learn
 plotly
 sqlalchemy
-psycopg2-binary
 requests

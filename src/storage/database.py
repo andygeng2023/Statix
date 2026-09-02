@@ -1,179 +1,15 @@
 import os
-
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import (
+    create_engine,
     Column,
-    DateTime,
-    Float,
     Integer,
     String,
-    UniqueConstraint,
-    create_engine,
+    Float,
+    DateTime,
 )
-
-from sqlalchemy.orm import (
-    declarative_base,
-    sessionmaker,
-)
-
-
-Base = declarative_base()
-
-
-class WatchlistStock(Base):
-    __tablename__ = "watchlist_stocks"
-
-    id = Column(
-        Integer,
-        primary_key=True,
-    )
-
-    ticker = Column(
-        String(20),
-        nullable=False,
-        unique=True,
-    )
-
-    added_at = Column(
-        DateTime,
-        default=datetime.utcnow,
-    )
-
-
-class ViewedStock(Base):
-    __tablename__ = "viewed_stocks"
-
-    id = Column(
-        Integer,
-        primary_key=True,
-    )
-
-    ticker = Column(
-        String(20),
-        nullable=False,
-    )
-
-    last_viewed = Column(
-        DateTime,
-        default=datetime.utcnow,
-    )
-
-    last_market_date = Column(
-        String(40),
-        nullable=True,
-    )
-
-    last_price = Column(
-        Float,
-        nullable=True,
-    )
-
-    direction = Column(
-        String(20),
-        nullable=True,
-    )
-
-    probability_up = Column(
-        Float,
-        nullable=True,
-    )
-
-    expected_return = Column(
-        Float,
-        nullable=True,
-    )
-
-    confidence = Column(
-        Float,
-        nullable=True,
-    )
-
-    test_accuracy = Column(
-        Float,
-        nullable=True,
-    )
-
-    return_rmse = Column(
-        Float,
-        nullable=True,
-    )
-
-    model_version = Column(
-        String(100),
-        nullable=True,
-    )
-
-    horizon = Column(
-        Integer,
-        nullable=True,
-    )
-
-    __table_args__ = (
-        UniqueConstraint(
-            "ticker",
-            name="unique_viewed_ticker",
-        ),
-    )
-
-
-class PredictionHistory(Base):
-    __tablename__ = "prediction_history"
-
-    id = Column(
-        Integer,
-        primary_key=True,
-    )
-
-    ticker = Column(
-        String(20),
-        nullable=False,
-    )
-
-    created_at = Column(
-        DateTime,
-        default=datetime.utcnow,
-    )
-
-    market_date = Column(
-        String(40),
-        nullable=False,
-    )
-
-    price = Column(
-        Float,
-        nullable=False,
-    )
-
-    direction = Column(
-        String(20),
-        nullable=False,
-    )
-
-    probability_up = Column(
-        Float,
-        nullable=False,
-    )
-
-    expected_return = Column(
-        Float,
-        nullable=False,
-    )
-
-    confidence = Column(
-        Float,
-        nullable=False,
-    )
-
-    model_version = Column(
-        String(100),
-        nullable=False,
-    )
-
-    horizon = Column(
-        Integer,
-        nullable=False,
-    )
+from sqlalchemy.orm import declarative_base, sessionmaker
 
 
 DATABASE_URL = os.getenv(
@@ -181,70 +17,109 @@ DATABASE_URL = os.getenv(
     "sqlite:///statix.db",
 )
 
-
 connect_args = {}
 
-if DATABASE_URL.startswith(
-    "sqlite"
-):
+if DATABASE_URL.startswith("sqlite"):
     connect_args = {
         "check_same_thread": False
     }
-
 
 engine = create_engine(
     DATABASE_URL,
     connect_args=connect_args,
 )
 
-
 SessionLocal = sessionmaker(
-    bind=engine
+    bind=engine,
+    expire_on_commit=False,
 )
 
+Base = declarative_base()
 
-Base.metadata.create_all(
-    engine
-)
+
+class WatchlistStock(Base):
+    __tablename__ = "watchlist_stocks"
+
+    id = Column(Integer, primary_key=True)
+    ticker = Column(String, unique=True, nullable=False)
+    added_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class ViewedStock(Base):
+    __tablename__ = "viewed_stocks"
+
+    id = Column(Integer, primary_key=True)
+    ticker = Column(String, unique=True, nullable=False)
+
+    last_viewed = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    last_market_date = Column(String)
+    last_price = Column(Float)
+
+    direction = Column(String)
+    probability_up = Column(Float)
+    expected_return = Column(Float)
+    confidence = Column(Float)
+
+    test_accuracy = Column(Float)
+    return_rmse = Column(Float)
+
+    model_version = Column(String)
+    horizon = Column(Integer)
+
+
+class PredictionHistory(Base):
+    __tablename__ = "prediction_history"
+
+    id = Column(Integer, primary_key=True)
+    ticker = Column(String, nullable=False)
+
+    created_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    market_date = Column(String)
+    price = Column(Float)
+
+    direction = Column(String)
+    probability_up = Column(Float)
+    expected_return = Column(Float)
+    confidence = Column(Float)
+
+    model_version = Column(String)
+    horizon = Column(Integer)
+
+
+Base.metadata.create_all(engine)
 
 
 def add_to_watchlist(ticker):
     ticker = ticker.upper().strip()
 
-    session = SessionLocal()
-
-    try:
+    with SessionLocal() as session:
         existing = (
-            session.query(
-                WatchlistStock
-            )
+            session.query(WatchlistStock)
             .filter_by(ticker=ticker)
             .first()
         )
 
         if existing is None:
             session.add(
-                WatchlistStock(
-                    ticker=ticker
-                )
+                WatchlistStock(ticker=ticker)
             )
-
             session.commit()
-
-    finally:
-        session.close()
 
 
 def remove_from_watchlist(ticker):
     ticker = ticker.upper().strip()
 
-    session = SessionLocal()
-
-    try:
+    with SessionLocal() as session:
         existing = (
-            session.query(
-                WatchlistStock
-            )
+            session.query(WatchlistStock)
             .filter_by(ticker=ticker)
             .first()
         )
@@ -253,50 +128,28 @@ def remove_from_watchlist(ticker):
             session.delete(existing)
             session.commit()
 
-    finally:
-        session.close()
-
 
 def get_watchlist():
-    session = SessionLocal()
-
-    try:
-        stocks = (
-            session.query(
-                WatchlistStock
-            )
-            .order_by(
-                WatchlistStock.added_at.desc()
-            )
+    with SessionLocal() as session:
+        rows = (
+            session.query(WatchlistStock)
+            .order_by(WatchlistStock.added_at.desc())
             .all()
         )
 
-        return [
-            stock.ticker
-            for stock in stocks
-        ]
-
-    finally:
-        session.close()
+        return [row.ticker for row in rows]
 
 
 def is_watched(ticker):
     ticker = ticker.upper().strip()
 
-    session = SessionLocal()
-
-    try:
+    with SessionLocal() as session:
         return (
-            session.query(
-                WatchlistStock
-            )
+            session.query(WatchlistStock)
             .filter_by(ticker=ticker)
             .first()
             is not None
         )
-
-    finally:
-        session.close()
 
 
 def save_viewed_prediction(
@@ -307,84 +160,33 @@ def save_viewed_prediction(
 ):
     ticker = ticker.upper().strip()
 
-    session = SessionLocal()
-
-    try:
-        viewed = (
-            session.query(
-                ViewedStock
-            )
+    with SessionLocal() as session:
+        row = (
+            session.query(ViewedStock)
             .filter_by(ticker=ticker)
             .first()
         )
 
-        if viewed is None:
-            viewed = ViewedStock(
-                ticker=ticker
-            )
+        if row is None:
+            row = ViewedStock(ticker=ticker)
+            session.add(row)
 
-            session.add(viewed)
+        row.last_viewed = datetime.now(timezone.utc)
+        row.last_market_date = market_date
+        row.last_price = price
 
-        viewed.last_viewed = datetime.utcnow()
+        row.direction = prediction["direction"]
+        row.probability_up = prediction["probability_up"]
+        row.expected_return = prediction["expected_return"]
+        row.confidence = prediction["confidence"]
 
-        viewed.last_market_date = (
-            market_date
-        )
+        row.test_accuracy = prediction["test_accuracy"]
+        row.return_rmse = prediction["return_rmse"]
 
-        viewed.last_price = float(
-            price
-        )
-
-        viewed.direction = prediction[
-            "direction"
-        ]
-
-        viewed.probability_up = float(
-            prediction[
-                "probability_up"
-            ]
-        )
-
-        viewed.expected_return = float(
-            prediction[
-                "expected_return"
-            ]
-        )
-
-        viewed.confidence = float(
-            prediction[
-                "confidence"
-            ]
-        )
-
-        viewed.test_accuracy = float(
-            prediction[
-                "test_accuracy"
-            ]
-        )
-
-        viewed.return_rmse = float(
-            prediction[
-                "return_rmse"
-            ]
-        )
-
-        viewed.model_version = (
-            prediction[
-                "model_version"
-            ]
-        )
-
-        viewed.horizon = int(
-            prediction[
-                "horizon"
-            ]
-        )
+        row.model_version = prediction["model_version"]
+        row.horizon = prediction["horizon"]
 
         session.commit()
-
-    finally:
-        session.close()
 
 
 def get_cached_prediction(
@@ -395,73 +197,34 @@ def get_cached_prediction(
 ):
     ticker = ticker.upper().strip()
 
-    session = SessionLocal()
-
-    try:
-        viewed = (
-            session.query(
-                ViewedStock
+    with SessionLocal() as session:
+        row = (
+            session.query(ViewedStock)
+            .filter_by(
+                ticker=ticker,
+                last_market_date=market_date,
+                model_version=model_version,
+                horizon=horizon,
             )
-            .filter_by(ticker=ticker)
             .first()
         )
 
-        if viewed is None:
-            return None
-
-        if (
-            viewed.last_market_date
-            != market_date
-        ):
-            return None
-
-        if (
-            viewed.model_version
-            != model_version
-        ):
-            return None
-
-        if (
-            viewed.horizon
-            != horizon
-        ):
-            return None
-
-        if (
-            viewed.direction is None
-            or viewed.probability_up is None
-        ):
+        if row is None:
             return None
 
         return {
-            "model_version": (
-                viewed.model_version
-            ),
-            "horizon": viewed.horizon,
-            "direction": viewed.direction,
-            "probability_up": (
-                viewed.probability_up
-            ),
-            "probability_down": (
-                1 - viewed.probability_up
-            ),
-            "expected_return": (
-                viewed.expected_return
-            ),
-            "confidence": (
-                viewed.confidence
-            ),
-            "test_accuracy": (
-                viewed.test_accuracy
-            ),
-            "return_rmse": (
-                viewed.return_rmse
-            ),
+            "direction": row.direction,
+            "probability_up": row.probability_up,
+            "expected_return": row.expected_return,
+            "confidence": row.confidence,
+            "test_accuracy": row.test_accuracy,
+            "return_rmse": row.return_rmse,
+            "model_version": row.model_version,
+            "horizon": row.horizon,
+            "price": row.last_price,
+            "market_date": row.last_market_date,
             "cached": True,
         }
-
-    finally:
-        session.close()
 
 
 def save_prediction_history(
@@ -470,85 +233,44 @@ def save_prediction_history(
     price,
     prediction,
 ):
-    session = SessionLocal()
+    ticker = ticker.upper().strip()
 
-    try:
-        record = PredictionHistory(
-            ticker=ticker.upper().strip(),
+    with SessionLocal() as session:
+        row = PredictionHistory(
+            ticker=ticker,
             market_date=market_date,
-            price=float(price),
-            direction=prediction[
-                "direction"
-            ],
-            probability_up=float(
-                prediction[
-                    "probability_up"
-                ]
-            ),
-            expected_return=float(
-                prediction[
-                    "expected_return"
-                ]
-            ),
-            confidence=float(
-                prediction[
-                    "confidence"
-                ]
-            ),
-            model_version=prediction[
-                "model_version"
-            ],
-            horizon=int(
-                prediction[
-                    "horizon"
-                ]
-            ),
+            price=price,
+            direction=prediction["direction"],
+            probability_up=prediction["probability_up"],
+            expected_return=prediction["expected_return"],
+            confidence=prediction["confidence"],
+            model_version=prediction["model_version"],
+            horizon=prediction["horizon"],
         )
 
-        session.add(record)
+        session.add(row)
         session.commit()
 
-    finally:
-        session.close()
 
-
-def get_recently_viewed(
-    limit=12,
-):
-    session = SessionLocal()
-
-    try:
-        stocks = (
-            session.query(
-                ViewedStock
-            )
-            .order_by(
-                ViewedStock.last_viewed.desc()
-            )
+def get_recently_viewed(limit=12):
+    with SessionLocal() as session:
+        rows = (
+            session.query(ViewedStock)
+            .order_by(ViewedStock.last_viewed.desc())
             .limit(limit)
             .all()
         )
 
         return [
             {
-                "ticker": stock.ticker,
-                "price": stock.last_price,
-                "direction": stock.direction,
-                "probability_up": (
-                    stock.probability_up
-                ),
-                "expected_return": (
-                    stock.expected_return
-                ),
-                "confidence": (
-                    stock.confidence
-                ),
-                "last_viewed": (
-                    stock.last_viewed
-                ),
+                "ticker": row.ticker,
+                "last_viewed": row.last_viewed,
+                "last_market_date": row.last_market_date,
+                "last_price": row.last_price,
+                "direction": row.direction,
+                "probability_up": row.probability_up,
+                "expected_return": row.expected_return,
+                "confidence": row.confidence,
             }
-            for stock in stocks
+            for row in rows
         ]
-
-    finally:
-        session.close()

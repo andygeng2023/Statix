@@ -1,121 +1,111 @@
-import pandas as pd
 import streamlit as st
 import yfinance as yf
+import pandas as pd
 
 
-@st.cache_data(
-    ttl=300,
-    show_spinner=False,
-)
-def get_stock_data(
-    ticker: str,
-    period: str = "2y",
-    interval: str = "1d",
-):
+DEFAULT_PERIOD = "5y"
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def get_stock_data(ticker: str, period: str = DEFAULT_PERIOD, interval: str = "1d"):
     ticker = ticker.upper().strip()
 
-    if not ticker:
-        raise ValueError("Ticker cannot be empty.")
-
-    df = yf.download(
-        ticker,
-        period=period,
-        interval=interval,
-        auto_adjust=True,
-        progress=False,
-    )
-
-    if df.empty:
-        raise ValueError(
-            f"No market data found for {ticker}."
+    try:
+        data = yf.download(
+            ticker,
+            period=period,
+            interval=interval,
+            auto_adjust=True,
+            progress=False,
+            threads=False,
         )
+    except Exception:
+        return pd.DataFrame()
 
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = df.columns.get_level_values(0)
+    if data is None or data.empty:
+        return pd.DataFrame()
 
-    df.columns = [
-        str(column).title()
-        for column in df.columns
-    ]
+    # Handle yfinance MultiIndex columns
+    if isinstance(data.columns, pd.MultiIndex):
+        data.columns = data.columns.get_level_values(0)
 
-    required = [
-        "Open",
-        "High",
-        "Low",
-        "Close",
-        "Volume",
-    ]
+    required = ["Open", "High", "Low", "Close", "Volume"]
 
-    missing = [
-        column
-        for column in required
-        if column not in df.columns
-    ]
-
+    missing = [column for column in required if column not in data.columns]
     if missing:
-        raise ValueError(
-            f"Missing market columns: {missing}"
-        )
+        return pd.DataFrame()
 
-    df = df[required].copy()
-    df = df.dropna()
+    data = data[required].copy()
+    data = data.dropna(subset=["Open", "High", "Low", "Close"])
 
-    if len(df) < 100:
-        raise ValueError(
-            f"Not enough historical data for {ticker}."
-        )
+    data.index = pd.to_datetime(data.index)
+    data = data[~data.index.duplicated(keep="last")]
+    data = data.sort_index()
 
-    return df
+    return data
 
 
-@st.cache_data(
-    ttl=30,
-    show_spinner=False,
-)
+@st.cache_data(ttl=30, show_spinner=False)
 def get_quote(ticker: str):
     ticker = ticker.upper().strip()
 
-    stock = yf.Ticker(ticker)
-
-    price = None
-    previous_close = None
-
     try:
-        fast_info = stock.fast_info
+        stock = yf.Ticker(ticker)
+        info = stock.fast_info
 
-        price = fast_info.get("lastPrice")
-        previous_close = fast_info.get(
-            "previousClose"
-        )
+        price = info.get("lastPrice")
+        previous = info.get("previousClose")
+
+        if price is not None:
+            price = float(price)
+
+        if previous is not None:
+            previous = float(previous)
+
+        change = None
+        change_pct = None
+
+        if price is not None and previous not in (None, 0):
+            change = price - previous
+            change_pct = (change / previous) * 100
+
+        return {
+            "ticker": ticker,
+            "price": price,
+            "previous_close": previous,
+            "change": change,
+            "change_pct": change_pct,
+        }
 
     except Exception:
         pass
 
-    if price is None:
-        data = get_stock_data(
-            ticker,
-            period="5d",
-        )
-
-        price = float(
-            data["Close"].iloc[-1]
-        )
+    # Historical fallback
+    try:
+        data = get_stock_data(ticker, period="5d")
 
         if len(data) >= 2:
-            previous_close = float(
-                data["Close"].iloc[-2]
-            )
+            current = float(data["Close"].iloc[-1])
+            previous = float(data["Close"].iloc[-2])
 
-    if previous_close:
-        change = price - previous_close
-        change_pct = change / previous_close
-    else:
-        change = 0.0
-        change_pct = 0.0
+            change = current - previous
+            change_pct = (change / previous) * 100 if previous else None
+
+            return {
+                "ticker": ticker,
+                "price": current,
+                "previous_close": previous,
+                "change": change,
+                "change_pct": change_pct,
+            }
+
+    except Exception:
+        pass
 
     return {
         "ticker": ticker,
-        "price": float(price),
-        "change": float(change),
-        "change_pct": float(change_pct),
+        "price": None,
+        "previous_close": None,
+        "change": None,
+        "change_pct": None,
     }

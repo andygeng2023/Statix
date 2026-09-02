@@ -2,11 +2,9 @@ import requests
 import streamlit as st
 
 
-@st.cache_data(
-    ttl=3600,
-    show_spinner=False,
-)
+@st.cache_data(ttl=3600, show_spinner=False)
 def search_stocks(query: str):
+
     query = query.strip()
 
     if not query:
@@ -17,46 +15,46 @@ def search_stocks(query: str):
         "v1/finance/search"
     )
 
-    params = {
-        "q": query,
-        "quotesCount": 20,
-        "newsCount": 0,
-    }
+    try:
+        response = requests.get(
+            url,
+            params={
+                "q": query,
+                "quotesCount": 20,
+                "newsCount": 0,
+            },
+            headers={
+                "User-Agent": "Mozilla/5.0"
+            },
+            timeout=10,
+        )
 
-    headers = {
-        "User-Agent": "Mozilla/5.0"
-    }
+        response.raise_for_status()
 
-    response = requests.get(
-        url,
-        params=params,
-        headers=headers,
-        timeout=10,
-    )
+        payload = response.json()
 
-    response.raise_for_status()
-
-    data = response.json()
+    except (
+        requests.RequestException,
+        ValueError,
+    ):
+        return []
 
     results = []
 
-    for item in data.get("quotes", []):
-        symbol = item.get("symbol")
+    for item in payload.get("quotes", []):
 
-        if not symbol:
-            continue
+        quote_type = item.get("quoteType")
 
-        quote_type = item.get(
-            "quoteType",
-            "",
-        )
-
-        # Keep actual tradable/security results.
         if quote_type not in {
             "EQUITY",
             "ETF",
             "MUTUALFUND",
         }:
+            continue
+
+        symbol = item.get("symbol")
+
+        if not symbol:
             continue
 
         results.append(
@@ -67,9 +65,9 @@ def search_stocks(query: str):
                     or item.get("shortname")
                     or symbol
                 ),
-                "exchange": item.get(
-                    "exchange",
-                    "",
+                "exchange": (
+                    item.get("exchange")
+                    or ""
                 ),
                 "type": quote_type,
             }

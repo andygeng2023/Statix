@@ -1,118 +1,75 @@
 import streamlit as st
 
-from src.data.market import (
-    get_quote,
-    get_stock_data,
-)
-
+from src.data.market import get_quote, get_stock_data
 from src.storage.database import (
     get_watchlist,
     remove_from_watchlist,
 )
 
-from src.ui.components import (
-    mini_chart,
-)
-
 
 st.title("Watchlist")
+st.caption("Your saved stocks and their latest market data.")
 
 watchlist = get_watchlist()
 
-
 if not watchlist:
+    st.info("Your watchlist is empty.")
 
-    st.info(
-        "No stocks are currently saved."
-    )
-
-    st.page_link(
-        "pages/search.py",
-        label="Search stocks",
-    )
+    if st.button("Search up a stock", use_container_width=True):
+        st.switch_page("pages/search.py")
 
     st.stop()
 
 
 for ticker in watchlist:
+    with st.container(border=True):
+        col1, col2, col3 = st.columns([2, 2, 1])
 
-    with st.container(
-        border=True
-    ):
+        quote = get_quote(ticker)
 
-        c1, c2, c3 = st.columns(
-            [2, 4, 1]
+        with col1:
+            st.subheader(ticker)
+
+            if quote["price"] is not None:
+                st.write(
+                    f"${quote['price']:,.2f}"
+                )
+
+        with col2:
+            if quote["change_pct"] is not None:
+                st.metric(
+                    "Daily Change",
+                    f"{quote['change_pct']:+.2f}%",
+                )
+            else:
+                st.write("Market change unavailable")
+
+        with col3:
+            if st.button(
+                "Analyze",
+                key=f"analyze_{ticker}",
+                use_container_width=True,
+            ):
+                st.session_state["selected_ticker"] = ticker
+                st.switch_page("pages/prediction.py")
+
+            if st.button(
+                "Remove",
+                key=f"remove_{ticker}",
+                use_container_width=True,
+            ):
+                remove_from_watchlist(ticker)
+                st.rerun()
+
+        # Lightweight chart only.
+        # This does NOT train the prediction model.
+        chart_data = get_stock_data(
+            ticker,
+            period="6mo",
         )
 
-        try:
-
-            quote = get_quote(
-                ticker
-            )
-
-            data = get_stock_data(
-                ticker,
-                period="3mo",
-            )
-
-            with c1:
-
-                st.subheader(
-                    ticker
-                )
-
-                st.metric(
-                    "Price",
-                    (
-                        f"${quote['price']:,.2f}"
-                    ),
-                    (
-                        f"{quote['change_pct'] * 100:+.2f}%"
-                    ),
-                )
-
-            with c2:
-
-                st.plotly_chart(
-                    mini_chart(data),
-                    use_container_width=True,
-                    config={
-                        "displayModeBar": False
-                    },
-                )
-
-            with c3:
-
-                if st.button(
-                    "Analyze",
-                    key=(
-                        f"watch_analyze_{ticker}"
-                    ),
-                ):
-
-                    st.session_state[
-                        "selected_ticker"
-                    ] = ticker
-
-                    st.switch_page(
-                        "pages/prediction.py"
-                    )
-
-                if st.button(
-                    "Remove",
-                    key=(
-                        f"watch_remove_{ticker}"
-                    ),
-                ):
-
-                    remove_from_watchlist(
-                        ticker
-                    )
-
-                    st.rerun()
-
-        except Exception as error:
-
-            st.error(
-                f"{ticker}: {error}"
+        if not chart_data.empty:
+            st.line_chart(
+                chart_data["Close"],
+                height=160,
             )
