@@ -1,7 +1,6 @@
 from datetime import datetime
 
 from sqlalchemy import (
-    Boolean,
     Column,
     DateTime,
     Float,
@@ -9,22 +8,28 @@ from sqlalchemy import (
     String,
     create_engine,
 )
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.orm import (
+    declarative_base,
+    sessionmaker,
+)
 
 
 DATABASE_URL = "sqlite:///statix.db"
 
+
 engine = create_engine(
     DATABASE_URL,
     connect_args={
-        "check_same_thread": False
+        "check_same_thread": False,
     },
 )
+
 
 SessionLocal = sessionmaker(
     bind=engine,
     expire_on_commit=False,
 )
+
 
 Base = declarative_base()
 
@@ -71,7 +76,7 @@ class ViewedStock(Base):
     )
 
     last_market_date = Column(
-        String(20),
+        String(30)
     )
 
     last_price = Column(Float)
@@ -104,20 +109,24 @@ class PredictionHistory(Base):
         default=datetime.utcnow,
     )
 
-    market_date = Column(String(20))
-    price = Column(Float)
+    market_date = Column(
+        String(30)
+    )
 
+    price = Column(Float)
     direction = Column(String(30))
     probability_up = Column(Float)
     expected_return = Column(Float)
     confidence = Column(Float)
-
     model_version = Column(String(100))
     horizon = Column(Integer)
 
 
 def init_db():
-    Base.metadata.create_all(engine)
+
+    Base.metadata.create_all(
+        engine
+    )
 
 
 def add_to_watchlist(ticker):
@@ -127,8 +136,12 @@ def add_to_watchlist(ticker):
     with SessionLocal() as session:
 
         existing = (
-            session.query(WatchlistStock)
-            .filter_by(ticker=ticker)
+            session.query(
+                WatchlistStock
+            )
+            .filter_by(
+                ticker=ticker
+            )
             .first()
         )
 
@@ -150,8 +163,12 @@ def remove_from_watchlist(ticker):
     with SessionLocal() as session:
 
         existing = (
-            session.query(WatchlistStock)
-            .filter_by(ticker=ticker)
+            session.query(
+                WatchlistStock
+            )
+            .filter_by(
+                ticker=ticker
+            )
             .first()
         )
 
@@ -168,8 +185,12 @@ def is_watched(ticker):
     with SessionLocal() as session:
 
         return (
-            session.query(WatchlistStock)
-            .filter_by(ticker=ticker)
+            session.query(
+                WatchlistStock
+            )
+            .filter_by(
+                ticker=ticker
+            )
             .first()
             is not None
         )
@@ -180,7 +201,9 @@ def get_watchlist():
     with SessionLocal() as session:
 
         rows = (
-            session.query(WatchlistStock)
+            session.query(
+                WatchlistStock
+            )
             .order_by(
                 WatchlistStock.added_at.desc()
             )
@@ -207,8 +230,12 @@ def save_viewed_prediction(
     with SessionLocal() as session:
 
         row = (
-            session.query(ViewedStock)
-            .filter_by(ticker=ticker)
+            session.query(
+                ViewedStock
+            )
+            .filter_by(
+                ticker=ticker
+            )
             .first()
         )
 
@@ -220,10 +247,14 @@ def save_viewed_prediction(
 
             session.add(row)
 
-        row.last_viewed = datetime.utcnow()
+        row.last_viewed = (
+            datetime.utcnow()
+        )
+
         row.last_market_date = str(
             market_date
         )
+
         row.last_price = price
 
         row.direction = prediction[
@@ -250,7 +281,10 @@ def save_viewed_prediction(
             "rmse"
         ]
 
-        row.model_version = model_version
+        row.model_version = (
+            model_version
+        )
+
         row.horizon = horizon
 
         session.commit()
@@ -270,7 +304,9 @@ def save_prediction_history(
         session.add(
             PredictionHistory(
                 ticker=ticker.upper(),
-                market_date=str(market_date),
+                market_date=str(
+                    market_date
+                ),
                 price=price,
                 direction=prediction[
                     "direction"
@@ -304,7 +340,9 @@ def get_cached_prediction(
     with SessionLocal() as session:
 
         row = (
-            session.query(ViewedStock)
+            session.query(
+                ViewedStock
+            )
             .filter_by(
                 ticker=ticker,
                 last_market_date=str(
@@ -330,12 +368,16 @@ def get_cached_prediction(
         }
 
 
-def get_recently_viewed(limit=12):
+def get_recently_viewed(
+    limit=12
+):
 
     with SessionLocal() as session:
 
         rows = (
-            session.query(ViewedStock)
+            session.query(
+                ViewedStock
+            )
             .order_by(
                 ViewedStock.last_viewed.desc()
             )

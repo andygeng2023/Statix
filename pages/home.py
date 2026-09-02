@@ -1,168 +1,386 @@
-import pandas as pd
 import streamlit as st
 
-
-def format_money(value):
-
-    if value is None:
-        return "—"
-
-    return f"${float(value):,.2f}"
-
-
-def format_percent(value):
-
-    if value is None:
-        return "—"
-
-    return f"{float(value) * 100:+.2f}%"
-
-
-def format_probability(value):
-
-    if value is None:
-        return "—"
-
-    return f"{float(value) * 100:.1f}%"
+from src.data.market import (
+    get_quote,
+    get_stock_data,
+    format_volume,
+)
+from src.storage.database import (
+    get_recently_viewed,
+    get_watchlist,
+)
+from src.ui.components import (
+    format_money,
+    format_percent,
+    format_probability,
+    mini_chart,
+)
 
 
-def signal_badge(direction):
+st.markdown(
+    """
+    <div class="hero">
+        <div class="hero-title">Statix</div>
+        <div class="hero-subtitle">
+            Market intelligence, predictions, and historical context in one dashboard.
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
-    if direction == "Bullish":
-        symbol = "▲"
-    elif direction == "Bearish":
-        symbol = "▼"
-    else:
-        symbol = "•"
 
-    return f"{symbol} {direction}"
+# =========================================================
+# QUICK ACTIONS
+# =========================================================
 
+c1, c2, c3 = st.columns(3)
 
-def mini_chart(df):
+with c1:
 
-    if df is None or df.empty:
-        st.caption("No chart data")
-        return
-
-    chart = df[["Close"]].tail(90).copy()
-
-    chart.columns = ["Price"]
-
-    st.line_chart(
-        chart,
-        height=120,
+    if st.button(
+        "🔎 Search a stock",
         use_container_width=True,
-    )
+    ):
+
+        st.switch_page(
+            "pages/search.py"
+        )
 
 
-def metric_grid(items):
+with c2:
 
-    columns = st.columns(len(items))
+    if st.button(
+        "⭐ Open watchlist",
+        use_container_width=True,
+    ):
 
-    for column, item in zip(columns, items):
+        st.switch_page(
+            "pages/watchlist.py"
+        )
 
-        with column:
 
-            st.markdown(
-                f"""
-                <div class="metric-card">
-                    <div class="small-label">
-                        {item["label"]}
-                    </div>
-                    <div class="small-value">
-                        {item["value"]}
-                    </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
+with c3:
+
+    if st.button(
+        "📊 Analyze SPY",
+        use_container_width=True,
+    ):
+
+        st.session_state[
+            "selected_ticker"
+        ] = "SPY"
+
+        st.switch_page(
+            "pages/prediction.py"
+        )
+
+
+st.divider()
+
+
+# =========================================================
+# MARKET SNAPSHOT
+# =========================================================
+
+st.markdown(
+    '<div class="section-title">Market snapshot</div>',
+    unsafe_allow_html=True,
+)
+
+market_symbols = [
+    "SPY",
+    "QQQ",
+    "DIA",
+    "IWM",
+]
+
+
+cols = st.columns(4)
+
+for col, ticker in zip(
+    cols,
+    market_symbols,
+):
+
+    quote = get_quote(ticker)
+
+    with col:
+
+        st.metric(
+            ticker,
+            format_money(
+                quote.get("price")
+            ),
+            format_percent(
+                quote.get(
+                    "change_pct"
+                )
+            ),
+        )
+
+
+st.divider()
+
+
+# =========================================================
+# FEATURED STOCKS
+# =========================================================
+
+st.markdown(
+    '<div class="section-title">Featured stocks</div>',
+    unsafe_allow_html=True,
+)
+
+featured = [
+    "AAPL",
+    "MSFT",
+    "NVDA",
+    "AMZN",
+    "GOOGL",
+    "META",
+    "TSLA",
+    "AVGO",
+]
+
+
+for start in range(
+    0,
+    len(featured),
+    4,
+):
+
+    row = featured[
+        start:start + 4
+    ]
+
+    cols = st.columns(4)
+
+    for col, ticker in zip(
+        cols,
+        row,
+    ):
+
+        with col:
+
+            quote = get_quote(
+                ticker
             )
 
+            st.markdown(
+                f"### {ticker}"
+            )
 
-def prediction_card(prediction):
+            st.metric(
+                "Price",
+                format_money(
+                    quote.get("price")
+                ),
+                format_percent(
+                    quote.get(
+                        "change_pct"
+                    )
+                ),
+            )
 
-    direction = prediction.get(
-        "direction",
-        "Neutral",
+            if st.button(
+                "Analyze",
+                key=f"home_analyze_{ticker}",
+                use_container_width=True,
+            ):
+
+                st.session_state[
+                    "selected_ticker"
+                ] = ticker
+
+                st.switch_page(
+                    "pages/prediction.py"
+                )
+
+
+st.divider()
+
+
+# =========================================================
+# WATCHLIST
+# =========================================================
+
+st.markdown(
+    '<div class="section-title">Watchlist</div>',
+    unsafe_allow_html=True,
+)
+
+watchlist = get_watchlist()
+
+if not watchlist:
+
+    st.info(
+        "Your watchlist is empty. Search for a stock to add one."
     )
 
-    st.markdown(
-        '<div class="signal-card">',
-        unsafe_allow_html=True,
-    )
+else:
 
-    st.markdown(
-        f"### {signal_badge(direction)}"
-    )
+    for start in range(
+        0,
+        min(len(watchlist), 6),
+        3,
+    ):
+
+        row = watchlist[
+            start:start + 3
+        ]
+
+        cols = st.columns(3)
+
+        for col, ticker in zip(
+            cols,
+            row,
+        ):
+
+            with col:
+
+                quote = get_quote(
+                    ticker
+                )
+
+                st.markdown(
+                    f"**{ticker}**"
+                )
+
+                st.write(
+                    format_money(
+                        quote.get(
+                            "price"
+                        )
+                    )
+                )
+
+                st.caption(
+                    f"Today "
+                    f"{format_percent(quote.get('change_pct'))}"
+                )
+
+
+st.divider()
+
+
+# =========================================================
+# RECENTLY VIEWED
+# =========================================================
+
+recent = get_recently_viewed(
+    limit=8
+)
+
+st.markdown(
+    '<div class="section-title">Recently analyzed</div>',
+    unsafe_allow_html=True,
+)
+
+if not recent:
 
     st.caption(
-        "5-session model outlook"
+        "Stocks you analyze will appear here."
     )
 
-    metric_grid(
-        [
-            {
-                "label": "Probability Up",
-                "value": format_probability(
-                    prediction.get(
-                        "probability_up"
-                    )
-                ),
-            },
-            {
-                "label": "Expected Return",
-                "value": format_percent(
-                    prediction.get(
-                        "expected_return"
-                    )
-                ),
-            },
-            {
-                "label": "Confidence",
-                "value": format_probability(
-                    prediction.get(
-                        "confidence"
-                    )
-                ),
-            },
-            {
-                "label": "Model Agreement",
-                "value": format_probability(
-                    prediction.get(
-                        "agreement"
-                    )
-                ),
-            },
+else:
+
+    for start in range(
+        0,
+        len(recent),
+        4,
+    ):
+
+        row = recent[
+            start:start + 4
         ]
+
+        cols = st.columns(4)
+
+        for col, item in zip(
+            cols,
+            row,
+        ):
+
+            ticker = item[
+                "ticker"
+            ]
+
+            with col:
+
+                st.markdown(
+                    f"### {ticker}"
+                )
+
+                st.caption(
+                    item.get(
+                        "direction",
+                        "Neutral",
+                    )
+                )
+
+                st.write(
+                    "5D: "
+                    + format_percent(
+                        item.get(
+                            "expected_return"
+                        )
+                    )
+                )
+
+                if st.button(
+                    "Open",
+                    key=f"recent_{ticker}",
+                    use_container_width=True,
+                ):
+
+                    st.session_state[
+                        "selected_ticker"
+                    ] = ticker
+
+                    st.switch_page(
+                        "pages/prediction.py"
+                    )
+
+
+st.divider()
+
+
+# =========================================================
+# MARKET DATA STATUS
+# =========================================================
+
+st.markdown(
+    '<div class="section-title">Data status</div>',
+    unsafe_allow_html=True,
+)
+
+status_cols = st.columns(3)
+
+with status_cols[0]:
+
+    spy = get_stock_data(
+        "SPY",
+        period="5y",
     )
 
-    st.markdown("</div>", unsafe_allow_html=True)
-
-
-def display_class_probabilities(prediction):
-
-    probabilities = prediction.get(
-        "class_probabilities",
-        {},
+    st.metric(
+        "SPY history",
+        f"{len(spy):,} sessions",
     )
 
-    if not probabilities:
-        return
 
-    frame = pd.DataFrame(
-        {
-            "Signal": list(
-                probabilities.keys()
-            ),
-            "Probability": [
-                value * 100
-                for value in probabilities.values()
-            ],
-        }
+with status_cols[1]:
+
+    st.metric(
+        "Quote refresh",
+        "~15 sec",
     )
 
-    frame = frame.set_index("Signal")
 
-    st.bar_chart(
-        frame,
-        height=260,
+with status_cols[2]:
+
+    st.metric(
+        "Model",
+        "V6.1 Ensemble",
     )

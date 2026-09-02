@@ -1,21 +1,20 @@
 import time
 
-import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
 from src.data.market import (
+    format_volume,
     get_latest_market_date,
     get_quote,
     get_stock_data,
-    format_volume,
 )
 from src.models.backtest import (
     walk_forward_backtest,
 )
 from src.models.ensemble import (
-    MODEL_VERSION,
     CLASS_NAMES,
+    MODEL_VERSION,
     train_and_predict,
 )
 from src.models.features import (
@@ -53,11 +52,11 @@ if not ticker:
     st.title("Prediction")
 
     st.info(
-        "Choose a stock from Search first."
+        "Search for a stock to begin."
     )
 
     if st.button(
-        "Search for a stock",
+        "Search stocks",
         use_container_width=True,
     ):
 
@@ -72,64 +71,68 @@ ticker = ticker.upper().strip()
 
 
 # =========================================================
-# HEADER / LIVE QUOTE
+# LIVE HEADER
 # =========================================================
 
-quote_placeholder = st.empty()
+header = st.empty()
 
 
 @st.fragment(run_every="20s")
-def live_quote():
+def live_header():
 
-    quote = get_quote(ticker)
+    quote = get_quote(
+        ticker
+    )
 
-    price = quote.get("price")
-    change = quote.get("change")
-    change_pct = quote.get("change_pct")
+    with header.container():
 
-    with quote_placeholder.container():
-
-        left, middle, right = st.columns(
-            [2.2, 1.5, 1]
+        c1, c2, c3 = st.columns(
+            [2.3, 1.4, 1]
         )
 
-        with left:
+        with c1:
 
             st.markdown(
                 f'<div class="ticker-title">{ticker}</div>',
                 unsafe_allow_html=True,
             )
 
-            if price is not None:
+            st.markdown(
+                f"### {format_money(quote.get('price'))}"
+            )
 
-                st.markdown(
-                    f"### {format_money(price)}"
+            st.caption(
+                "Today: "
+                + format_percent(
+                    quote.get(
+                        "change_pct"
+                    )
                 )
+            )
 
-                st.caption(
-                    f"Day: {format_percent(change_pct)} "
-                    f"({format_money(change) if change is not None else '—'})"
-                )
+        with c2:
 
-        with middle:
-
-            st.caption("Volume")
+            st.caption(
+                "Volume"
+            )
 
             st.write(
                 format_volume(
-                    quote.get("volume")
+                    quote.get(
+                        "volume"
+                    )
                 )
             )
 
             st.caption(
-                "Market quote refreshes approximately every 20 seconds."
+                "Quote refresh ≈ 20 sec"
             )
 
-        with right:
+        with c3:
 
             if st.button(
                 "Refresh",
-                key=f"refresh_{ticker}",
+                key=f"quote_refresh_{ticker}",
                 use_container_width=True,
             ):
 
@@ -137,11 +140,11 @@ def live_quote():
                 st.rerun()
 
 
-live_quote()
+live_header()
 
 
 if st.button(
-    "Search up a different stock"
+    "Search a different stock"
 ):
 
     st.switch_page(
@@ -153,28 +156,26 @@ st.divider()
 
 
 # =========================================================
-# HISTORICAL DATA
+# HISTORY
 # =========================================================
 
 with st.status(
-    "Loading market history...",
+    "Loading 5-year market history...",
     expanded=False,
 ) as status:
 
     stock_df = get_stock_data(
         ticker,
         period="5y",
-        interval="1d",
     )
 
     market_df = get_stock_data(
         "SPY",
         period="5y",
-        interval="1d",
     )
 
     status.update(
-        label="Market history loaded",
+        label="Historical data ready",
         state="complete",
     )
 
@@ -182,7 +183,7 @@ with st.status(
 if stock_df.empty:
 
     st.error(
-        f"No historical data found for {ticker}."
+        f"No historical data is available for {ticker}."
     )
 
     st.stop()
@@ -206,15 +207,16 @@ st.caption(
 # WATCHLIST
 # =========================================================
 
-watched = is_watched(ticker)
-
-if watched:
+if is_watched(ticker):
 
     if st.button(
         "★ Remove from watchlist"
     ):
 
-        remove_from_watchlist(ticker)
+        remove_from_watchlist(
+            ticker
+        )
+
         st.rerun()
 
 else:
@@ -223,15 +225,18 @@ else:
         "☆ Add to watchlist"
     ):
 
-        add_to_watchlist(ticker)
+        add_to_watchlist(
+            ticker
+        )
+
         st.rerun()
 
 
 # =========================================================
-# CACHED PREDICTION
+# CACHE
 # =========================================================
 
-cached = get_cached_prediction(
+prediction = get_cached_prediction(
     ticker=ticker,
     market_date=market_date,
     model_version=MODEL_VERSION,
@@ -239,24 +244,22 @@ cached = get_cached_prediction(
 )
 
 
-if cached:
-
-    prediction = cached
+if prediction:
 
     prediction["cached"] = True
 
     st.success(
-        "Loaded saved analysis. Statix did not retrain the model."
+        "Loaded saved V6.1 analysis. No model retraining was needed."
     )
 
 else:
 
     st.info(
-        "New market session detected. Building a fresh model analysis."
+        "New market session detected. Building the model once and saving the result."
     )
 
     with st.status(
-        "Building V6 model...",
+        "Training V6.1 ensemble...",
         expanded=True,
     ) as status:
 
@@ -269,7 +272,11 @@ else:
         )
 
         st.write(
-            f"Feature rows: {len(training_df):,}"
+            f"Historical sessions: {len(stock_df):,}"
+        )
+
+        st.write(
+            f"Usable training rows: {len(training_df):,}"
         )
 
         st.write(
@@ -279,21 +286,36 @@ else:
         if len(training_df) < 220:
 
             status.update(
-                label="Not enough usable history",
+                label="Insufficient model history",
                 state="error",
             )
 
             st.error(
-                "This stock does not currently have enough usable historical data for the V6 model."
+                "This security does not have enough usable historical data for the V6.1 model."
             )
 
             st.stop()
 
-        prediction = train_and_predict(
-            training_df,
-            latest_df,
-            feature_columns,
-        )
+        try:
+
+            prediction = train_and_predict(
+                training_df,
+                latest_df,
+                feature_columns,
+            )
+
+        except ValueError as error:
+
+            status.update(
+                label="Model could not train",
+                state="error",
+            )
+
+            st.error(
+                str(error)
+            )
+
+            st.stop()
 
         prediction["cached"] = False
 
@@ -316,7 +338,7 @@ else:
         )
 
         status.update(
-            label="V6 model complete",
+            label="V6.1 analysis complete",
             state="complete",
         )
 
@@ -342,8 +364,6 @@ tabs = st.tabs(
 
 with tabs[0]:
 
-    st.subheader("Overview")
-
     prediction_card(
         prediction
     )
@@ -353,7 +373,7 @@ with tabs[0]:
     metric_grid(
         [
             {
-                "label": "Price",
+                "label": "Current Price",
                 "value": format_money(
                     latest_price
                 ),
@@ -403,7 +423,7 @@ with tabs[0]:
 with tabs[1]:
 
     st.subheader(
-        "Model prediction"
+        "V6.1 prediction"
     )
 
     direction = prediction.get(
@@ -411,40 +431,28 @@ with tabs[1]:
         "Neutral",
     )
 
-    probability_up = prediction.get(
-        "probability_up"
-    )
-
-    expected_return = prediction.get(
-        "expected_return"
-    )
-
-    confidence = prediction.get(
-        "confidence"
-    )
-
     if direction == "Bullish":
 
         st.success(
-            f"Model signal: {direction}"
+            "Model signal: Bullish"
         )
 
     elif direction == "Bearish":
 
         st.error(
-            f"Model signal: {direction}"
+            "Model signal: Bearish"
         )
 
     else:
 
         st.warning(
-            f"Model signal: {direction}"
+            "Model signal: Neutral"
         )
 
     st.write(
-        "The model combines price structure, momentum, "
-        "volatility, volume, technical indicators, and "
-        "market-relative information."
+        "The ensemble combines momentum, trend, volatility, "
+        "volume, price structure, technical indicators, and "
+        "market-relative features."
     )
 
     st.divider()
@@ -454,7 +462,9 @@ with tabs[1]:
             {
                 "label": "Probability Up",
                 "value": format_probability(
-                    probability_up
+                    prediction.get(
+                        "probability_up"
+                    )
                 ),
             },
             {
@@ -466,15 +476,19 @@ with tabs[1]:
                 ),
             },
             {
-                "label": "Expected 5D Return",
+                "label": "Expected 5D",
                 "value": format_percent(
-                    expected_return
+                    prediction.get(
+                        "expected_return"
+                    )
                 ),
             },
             {
                 "label": "Confidence",
                 "value": format_probability(
-                    confidence
+                    prediction.get(
+                        "confidence"
+                    )
                 ),
             },
         ]
@@ -486,21 +500,22 @@ with tabs[1]:
         "Model agreement"
     )
 
-    agreement = prediction.get(
-        "agreement"
+    agreement = float(
+        prediction.get(
+            "agreement",
+            0,
+        )
     )
 
     st.progress(
-        float(agreement or 0)
+        agreement
     )
 
     st.caption(
-        f"Agreement: {format_probability(agreement)}"
-    )
-
-    st.write(
-        "Agreement measures how closely the independent "
-        "models align on the directional probability."
+        format_probability(
+            agreement
+        )
+        + " agreement across the model ensemble"
     )
 
 
@@ -511,7 +526,7 @@ with tabs[1]:
 with tabs[2]:
 
     st.subheader(
-        "Price history"
+        "Price and trend"
     )
 
     period = st.selectbox(
@@ -529,7 +544,6 @@ with tabs[2]:
     chart_df = get_stock_data(
         ticker,
         period=period,
-        interval="1d",
     )
 
     if chart_df.empty:
@@ -540,18 +554,7 @@ with tabs[2]:
 
     else:
 
-        chart = go.Figure()
-
-        chart.add_trace(
-            go.Candlestick(
-                x=chart_df.index,
-                open=chart_df["Open"],
-                high=chart_df["High"],
-                low=chart_df["Low"],
-                close=chart_df["Close"],
-                name="Price",
-            )
-        )
+        chart_df = chart_df.copy()
 
         chart_df["MA20"] = (
             chart_df["Close"]
@@ -571,45 +574,58 @@ with tabs[2]:
             .mean()
         )
 
-        for ma in [
+        fig = go.Figure()
+
+        fig.add_trace(
+            go.Candlestick(
+                x=chart_df.index,
+                open=chart_df["Open"],
+                high=chart_df["High"],
+                low=chart_df["Low"],
+                close=chart_df["Close"],
+                name="Price",
+            )
+        )
+
+        for column in [
             "MA20",
             "MA50",
             "MA200",
         ]:
 
-            chart.add_trace(
+            fig.add_trace(
                 go.Scatter(
                     x=chart_df.index,
-                    y=chart_df[ma],
+                    y=chart_df[column],
                     mode="lines",
-                    name=ma,
+                    name=column,
                 )
             )
 
-        chart.update_layout(
+        fig.update_layout(
             height=600,
             xaxis_rangeslider_visible=False,
             margin=dict(
                 l=10,
                 r=10,
-                t=30,
+                t=20,
                 b=10,
             ),
         )
 
         st.plotly_chart(
-            chart,
+            fig,
             use_container_width=True,
         )
 
-        st.subheader("Volume")
-
-        volume = chart_df[
-            ["Volume"]
-        ].tail(180)
+        st.subheader(
+            "Volume"
+        )
 
         st.bar_chart(
-            volume,
+            chart_df[
+                ["Volume"]
+            ].tail(180),
             height=220,
         )
 
@@ -621,26 +637,26 @@ with tabs[2]:
 with tabs[3]:
 
     st.subheader(
-        "Model information"
+        "Model architecture"
     )
 
     metric_grid(
         [
             {
                 "label": "Model",
-                "value": "V6 Ensemble",
+                "value": "V6.1 Ensemble",
             },
             {
-                "label": "Feature Version",
+                "label": "Features",
                 "value": FEATURE_VERSION,
             },
             {
                 "label": "Training Rows",
-                "value": f'{prediction.get("training_rows", "—"):,}',
+                "value": f'{prediction.get("training_rows", 0):,}',
             },
             {
                 "label": "Validation Rows",
-                "value": f'{prediction.get("validation_rows", "—"):,}',
+                "value": f'{prediction.get("validation_rows", 0):,}',
             },
         ]
     )
@@ -648,35 +664,31 @@ with tabs[3]:
     st.divider()
 
     st.write(
-        "### Model stack"
-    )
-
-    st.write(
         """
-        **Gradient Boosting**  
-        Captures nonlinear relationships between technical and market features.
+        **HistGradientBoosting**  
+        Nonlinear gradient-boosted decision trees.
 
         **Random Forest**  
-        Provides a different tree-based view of the same feature space.
+        Independent randomized tree ensemble.
 
         **Logistic Regression**  
-        Provides a simpler linear baseline and improves ensemble diversity.
+        Scaled linear model that adds diversity to the ensemble.
 
-        **Regression ensemble**  
-        Independently estimates the expected future return.
+        **Return ensemble**  
+        Separate regressors estimate the magnitude of the future return.
         """
     )
 
     st.divider()
 
-    st.write(
-        "### Validation"
+    st.subheader(
+        "Validation quality"
     )
 
     metric_grid(
         [
             {
-                "label": "Ensemble Accuracy",
+                "label": "Accuracy",
                 "value": format_probability(
                     prediction.get(
                         "accuracy"
@@ -721,35 +733,29 @@ with tabs[4]:
         "Walk-forward backtest"
     )
 
+    training_df, latest_df, feature_columns = (
+        create_features(
+            stock_df,
+            market_df,
+            horizon=HORIZON,
+        )
+    )
+
     with st.spinner(
-        "Running historical validation..."
+        "Testing the model through historical periods..."
     ):
 
-        training_df, latest_df, feature_columns = (
-            create_features(
-                stock_df,
-                market_df,
-                horizon=HORIZON,
-            )
-        )
-
-        backtest = walk_forward_backtest(
+        result = walk_forward_backtest(
             training_df,
             feature_columns,
         )
 
-    accuracy = backtest.get(
+    if result[
         "accuracy"
-    )
-
-    baseline = backtest.get(
-        "baseline"
-    )
-
-    if accuracy is None:
+    ] is None:
 
         st.warning(
-            "Not enough history to run the walk-forward backtest."
+            "Not enough history for the walk-forward test."
         )
 
     else:
@@ -759,25 +765,34 @@ with tabs[4]:
                 {
                     "label": "Walk-forward Accuracy",
                     "value": format_probability(
-                        accuracy
+                        result[
+                            "accuracy"
+                        ]
                     ),
                 },
                 {
                     "label": "Baseline",
                     "value": format_probability(
-                        baseline
+                        result[
+                            "baseline"
+                        ]
                     ),
                 },
                 {
                     "label": "Improvement",
                     "value": format_percent(
-                        accuracy - baseline
+                        result[
+                            "accuracy"
+                        ]
+                        - result[
+                            "baseline"
+                        ]
                     ),
                 },
             ]
         )
 
-        results = backtest[
+        results = result[
             "predictions"
         ]
 
@@ -785,13 +800,15 @@ with tabs[4]:
 
             results = results.copy()
 
-            results["Actual"] = results[
-                "actual"
-            ].map(CLASS_NAMES)
+            results["Actual"] = (
+                results["actual"]
+                .map(CLASS_NAMES)
+            )
 
-            results["Predicted"] = results[
-                "predicted"
-            ].map(CLASS_NAMES)
+            results["Predicted"] = (
+                results["predicted"]
+                .map(CLASS_NAMES)
+            )
 
             st.dataframe(
                 results[
@@ -808,6 +825,6 @@ with tabs[4]:
 
 st.caption(
     f"Statix {MODEL_VERSION} • "
-    f"Feature set {FEATURE_VERSION} • "
+    f"{FEATURE_VERSION} • "
     f"{time.strftime('%Y-%m-%d %H:%M:%S')}"
 )

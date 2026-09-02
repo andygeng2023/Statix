@@ -1,4 +1,3 @@
-import pandas as pd
 import streamlit as st
 
 
@@ -26,50 +25,26 @@ def format_probability(value):
     return f"{float(value) * 100:.1f}%"
 
 
-def signal_badge(direction):
-
-    if direction == "Bullish":
-        symbol = "▲"
-    elif direction == "Bearish":
-        symbol = "▼"
-    else:
-        symbol = "•"
-
-    return f"{symbol} {direction}"
-
-
-def mini_chart(df):
-
-    if df is None or df.empty:
-        st.caption("No chart data")
-        return
-
-    chart = df[["Close"]].tail(90).copy()
-
-    chart.columns = ["Price"]
-
-    st.line_chart(
-        chart,
-        height=120,
-        use_container_width=True,
-    )
-
-
 def metric_grid(items):
 
-    columns = st.columns(len(items))
+    columns = st.columns(
+        len(items)
+    )
 
-    for column, item in zip(columns, items):
+    for column, item in zip(
+        columns,
+        items,
+    ):
 
         with column:
 
             st.markdown(
                 f"""
                 <div class="metric-card">
-                    <div class="small-label">
+                    <div class="metric-label">
                         {item["label"]}
                     </div>
-                    <div class="small-value">
+                    <div class="metric-value">
                         {item["value"]}
                     </div>
                 </div>
@@ -78,7 +53,34 @@ def metric_grid(items):
             )
 
 
-def prediction_card(prediction):
+def mini_chart(df):
+
+    if df is None or df.empty:
+
+        st.caption(
+            "Chart unavailable"
+        )
+
+        return
+
+    chart = df[
+        ["Close"]
+    ].tail(90).copy()
+
+    chart.columns = [
+        "Price"
+    ]
+
+    st.line_chart(
+        chart,
+        height=120,
+        use_container_width=True,
+    )
+
+
+def prediction_card(
+    prediction
+):
 
     direction = prediction.get(
         "direction",
@@ -91,11 +93,11 @@ def prediction_card(prediction):
     )
 
     st.markdown(
-        f"### {signal_badge(direction)}"
+        f"### {direction}"
     )
 
     st.caption(
-        "5-session model outlook"
+        "Model outlook: next 5 market sessions"
     )
 
     metric_grid(
@@ -125,7 +127,7 @@ def prediction_card(prediction):
                 ),
             },
             {
-                "label": "Model Agreement",
+                "label": "Agreement",
                 "value": format_probability(
                     prediction.get(
                         "agreement"
@@ -135,10 +137,15 @@ def prediction_card(prediction):
         ]
     )
 
-    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown(
+        "</div>",
+        unsafe_allow_html=True,
+    )
 
 
-def display_class_probabilities(prediction):
+def display_class_probabilities(
+    prediction
+):
 
     probabilities = prediction.get(
         "class_probabilities",
@@ -148,21 +155,13 @@ def display_class_probabilities(prediction):
     if not probabilities:
         return
 
-    frame = pd.DataFrame(
+    st.bar_chart(
         {
-            "Signal": list(
-                probabilities.keys()
-            ),
-            "Probability": [
+            key: [
                 value * 100
                 for value in probabilities.values()
-            ],
-        }
-    )
-
-    frame = frame.set_index("Signal")
-
-    st.bar_chart(
-        frame,
-        height=260,
+            ]
+            for key in probabilities.keys()
+        },
+        height=280,
     )

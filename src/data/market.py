@@ -1,183 +1,162 @@
-import time
-
-import numpy as np
-import pandas as pd
-import yfinance as yf
 import streamlit as st
 
-
-DEFAULT_PERIOD = "5y"
-QUOTE_TTL = 15
-HISTORY_TTL = 300
+from src.storage.database import init_db
 
 
-@st.cache_data(ttl=HISTORY_TTL, show_spinner=False)
-def get_stock_data(
-    ticker: str,
-    period: str = DEFAULT_PERIOD,
-    interval: str = "1d",
-) -> pd.DataFrame:
+st.set_page_config(
+    page_title="Statix",
+    page_icon="📈",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
-    ticker = ticker.upper().strip()
-
-    try:
-        df = yf.download(
-            ticker,
-            period=period,
-            interval=interval,
-            auto_adjust=True,
-            progress=False,
-            threads=False,
-        )
-    except Exception:
-        return pd.DataFrame()
-
-    if df is None or df.empty:
-        return pd.DataFrame()
-
-    if isinstance(df.columns, pd.MultiIndex):
-        try:
-            df = df.xs(ticker, axis=1, level=-1)
-        except Exception:
-            df.columns = df.columns.get_level_values(0)
-
-    required = ["Open", "High", "Low", "Close", "Volume"]
-
-    for col in required:
-        if col not in df.columns:
-            return pd.DataFrame()
-
-    df = df[required].copy()
-
-    df.index = pd.to_datetime(df.index)
-
-    if getattr(df.index, "tz", None) is not None:
-        df.index = df.index.tz_localize(None)
-
-    df = df.sort_index()
-    df = df[~df.index.duplicated(keep="last")]
-
-    for col in required:
-        df[col] = pd.to_numeric(df[col], errors="coerce")
-
-    df = df.dropna(subset=["Open", "High", "Low", "Close"])
-
-    return df
+init_db()
 
 
-def _safe_number(value):
-    try:
-        value = float(value)
+st.markdown(
+    """
+    <style>
+    #MainMenu {visibility:hidden;}
+    footer {visibility:hidden;}
 
-        if np.isnan(value) or np.isinf(value):
-            return None
-
-        return value
-    except Exception:
-        return None
-
-
-@st.cache_data(ttl=QUOTE_TTL, show_spinner=False)
-def get_quote(ticker: str) -> dict:
-
-    ticker = ticker.upper().strip()
-
-    result = {
-        "ticker": ticker,
-        "price": None,
-        "previous": None,
-        "change": None,
-        "change_pct": None,
-        "volume": None,
-        "market_cap": None,
-        "timestamp": time.time(),
+    .block-container {
+        max-width: 1500px;
+        padding-top: 1.2rem;
+        padding-bottom: 3rem;
     }
 
-    try:
-        obj = yf.Ticker(ticker)
+    [data-testid="stSidebar"] {
+        border-right: 1px solid rgba(128,128,128,.15);
+    }
 
-        try:
-            info = obj.fast_info
+    .statix-logo {
+        font-size: 30px;
+        font-weight: 850;
+        letter-spacing: -1.5px;
+    }
 
-            price = _safe_number(
-                info.get("last_price")
-                or info.get("regularMarketPrice")
-            )
+    .muted {
+        color: rgba(128,128,128,.85);
+        font-size: 13px;
+    }
 
-            previous = _safe_number(
-                info.get("previous_close")
-                or info.get("regularMarketPreviousClose")
-            )
+    .hero {
+        padding: 28px;
+        border-radius: 20px;
+        border: 1px solid rgba(128,128,128,.16);
+        background: linear-gradient(
+            135deg,
+            rgba(128,128,128,.08),
+            rgba(128,128,128,.025)
+        );
+        margin-bottom: 20px;
+    }
 
-            volume = _safe_number(info.get("last_volume"))
-            market_cap = _safe_number(info.get("market_cap"))
+    .hero-title {
+        font-size: 42px;
+        font-weight: 850;
+        letter-spacing: -2px;
+        margin-bottom: 5px;
+    }
 
-            if price is not None:
-                result["price"] = price
+    .hero-subtitle {
+        font-size: 16px;
+        color: rgba(128,128,128,.9);
+    }
 
-            if previous is not None:
-                result["previous"] = previous
+    .section-title {
+        font-size: 23px;
+        font-weight: 750;
+        letter-spacing: -.5px;
+    }
 
-            if volume is not None:
-                result["volume"] = volume
+    .stock-card {
+        border: 1px solid rgba(128,128,128,.16);
+        border-radius: 16px;
+        padding: 17px;
+        background: rgba(128,128,128,.025);
+        min-height: 165px;
+    }
 
-            if market_cap is not None:
-                result["market_cap"] = market_cap
+    .signal-card {
+        border: 1px solid rgba(128,128,128,.18);
+        border-radius: 18px;
+        padding: 22px;
+        background: rgba(128,128,128,.035);
+    }
 
-        except Exception:
-            pass
+    .metric-card {
+        border: 1px solid rgba(128,128,128,.15);
+        border-radius: 13px;
+        padding: 13px;
+        background: rgba(128,128,128,.025);
+    }
 
-        if result["price"] is None:
-            fallback = get_stock_data(ticker, period="5d")
+    .metric-label {
+        color: rgba(128,128,128,.8);
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: .6px;
+    }
 
-            if not fallback.empty:
-                result["price"] = float(fallback["Close"].iloc[-1])
+    .metric-value {
+        font-size: 19px;
+        font-weight: 750;
+        margin-top: 3px;
+    }
 
-                if len(fallback) >= 2:
-                    result["previous"] = float(
-                        fallback["Close"].iloc[-2]
-                    )
+    .ticker-title {
+        font-size: 34px;
+        font-weight: 850;
+        letter-spacing: -1.5px;
+    }
 
-                result["volume"] = float(
-                    fallback["Volume"].iloc[-1]
-                )
-
-    except Exception:
-        return result
-
-    if result["price"] is not None and result["previous"] is not None:
-        result["change"] = (
-            result["price"] - result["previous"]
-        )
-
-        if result["previous"] != 0:
-            result["change_pct"] = (
-                result["change"] / result["previous"]
-            )
-
-    return result
-
-
-def get_latest_market_date(df: pd.DataFrame):
-    if df is None or df.empty:
-        return None
-
-    return df.index[-1].date()
+    div[data-testid="stMetric"] {
+        border: 1px solid rgba(128,128,128,.13);
+        border-radius: 12px;
+        padding: 10px;
+        background: rgba(128,128,128,.02);
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 
-def format_volume(value):
-    if value is None:
-        return "—"
+pages = {
+    "Statix": [
+        st.Page("pages/home.py", title="Home", icon="🏠"),
+        st.Page("pages/search.py", title="Search", icon="🔎"),
+        st.Page("pages/watchlist.py", title="Watchlist", icon="⭐"),
+        st.Page("pages/prediction.py", title="Prediction", icon="📊"),
+    ]
+}
 
-    value = float(value)
 
-    if value >= 1_000_000_000:
-        return f"{value / 1_000_000_000:.2f}B"
+pg = st.navigation(pages)
 
-    if value >= 1_000_000:
-        return f"{value / 1_000_000:.2f}M"
 
-    if value >= 1_000:
-        return f"{value / 1_000:.1f}K"
+with st.sidebar:
 
-    return f"{value:,.0f}"
+    st.markdown(
+        '<div class="statix-logo">Statix</div>',
+        unsafe_allow_html=True,
+    )
+
+    st.caption(
+        "Market intelligence dashboard"
+    )
+
+    st.divider()
+
+    st.markdown("**V6.1 Ensemble**")
+    st.caption("Technical + market-relative features")
+
+    st.divider()
+
+    st.caption(
+        "Market data may be delayed. Model outputs are estimates, not financial advice."
+    )
+
+
+pg.run()

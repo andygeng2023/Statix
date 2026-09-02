@@ -11,34 +11,48 @@ from src.storage.database import (
 
 st.title("Search")
 
-query = st.text_input(
-    "Search stocks, ETFs, or symbols",
-    placeholder="Apple, Tesla, NVDA...",
+st.caption(
+    "Find stocks and ETFs, then open the full Statix analysis."
 )
+
+
+query = st.text_input(
+    "Search",
+    placeholder="Apple, Microsoft, NVDA, SPY...",
+)
+
 
 if query:
 
-    with st.spinner("Searching..."):
+    with st.spinner(
+        "Searching..."
+    ):
 
-        results = search_symbols(query)
+        results = search_symbols(
+            query
+        )
 
     if not results:
 
         st.warning(
-            "No matching symbols found."
+            "No matching securities found."
         )
 
     for result in results:
 
-        ticker = result["symbol"]
+        ticker = result[
+            "symbol"
+        ]
 
-        quote = get_quote(ticker)
-
-        col1, col2, col3, col4 = st.columns(
-            [2.8, 2, 1.3, 1.3]
+        quote = get_quote(
+            ticker
         )
 
-        with col1:
+        c1, c2, c3, c4 = st.columns(
+            [2.8, 1.5, 1.1, 1.2]
+        )
+
+        with c1:
 
             st.markdown(
                 f"### {ticker}"
@@ -49,31 +63,36 @@ if query:
                 f'{result["exchange"]}'
             )
 
-        with col2:
+        with c2:
 
-            price = quote.get("price")
+            st.metric(
+                "Price",
+                (
+                    f'${quote["price"]:,.2f}'
+                    if quote.get("price")
+                    is not None
+                    else "—"
+                ),
+                (
+                    f'{quote["change_pct"] * 100:+.2f}%'
+                    if quote.get(
+                        "change_pct"
+                    )
+                    is not None
+                    else None
+                ),
+            )
 
-            if price is not None:
-                st.metric(
-                    "Price",
-                    f"${price:,.2f}",
-                    (
-                        f'{quote["change_pct"] * 100:+.2f}%'
-                        if quote.get("change_pct")
-                        is not None
-                        else None
-                    ),
-                )
+        with c3:
 
-        with col3:
-
-            watched = is_watched(ticker)
-
-            if watched:
+            if is_watched(
+                ticker
+            ):
 
                 if st.button(
                     "Remove",
                     key=f"remove_{ticker}",
+                    use_container_width=True,
                 ):
 
                     remove_from_watchlist(
@@ -87,6 +106,7 @@ if query:
                 if st.button(
                     "Watch",
                     key=f"watch_{ticker}",
+                    use_container_width=True,
                 ):
 
                     add_to_watchlist(
@@ -95,11 +115,12 @@ if query:
 
                     st.rerun()
 
-        with col4:
+        with c4:
 
             if st.button(
                 "Analyze",
-                key=f"analyze_{ticker}",
+                key=f"search_analyze_{ticker}",
+                use_container_width=True,
             ):
 
                 st.session_state[
@@ -113,18 +134,23 @@ if query:
         st.divider()
 
 
-st.subheader("Popular")
+st.subheader(
+    "Popular"
+)
 
 popular = [
     "AAPL",
     "MSFT",
     "NVDA",
     "AMZN",
+    "GOOGL",
     "TSLA",
+    "META",
     "SPY",
 ]
 
-cols = st.columns(6)
+
+cols = st.columns(4)
 
 for col, ticker in zip(
     cols,
@@ -135,6 +161,7 @@ for col, ticker in zip(
 
         if st.button(
             ticker,
+            key=f"popular_{ticker}",
             use_container_width=True,
         ):
 

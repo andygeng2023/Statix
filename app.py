@@ -12,71 +12,111 @@ st.set_page_config(
 
 init_db()
 
+
 st.markdown(
     """
     <style>
-        #MainMenu {visibility: hidden;}
-        footer {visibility: hidden;}
+    #MainMenu {visibility:hidden;}
+    footer {visibility:hidden;}
 
-        .block-container {
-            max-width: 1450px;
-            padding-top: 1.2rem;
-            padding-bottom: 3rem;
-        }
+    .block-container {
+        max-width: 1500px;
+        padding-top: 1.2rem;
+        padding-bottom: 3rem;
+    }
 
-        [data-testid="stSidebar"] {
-            border-right: 1px solid rgba(128,128,128,.18);
-        }
+    [data-testid="stSidebar"] {
+        border-right: 1px solid rgba(128,128,128,.15);
+    }
 
-        .statix-logo {
-            font-size: 28px;
-            font-weight: 800;
-            letter-spacing: -1px;
-        }
+    .statix-logo {
+        font-size: 30px;
+        font-weight: 850;
+        letter-spacing: -1.5px;
+    }
 
-        .statix-muted {
-            color: rgba(128,128,128,.9);
-            font-size: 13px;
-        }
+    .muted {
+        color: rgba(128,128,128,.85);
+        font-size: 13px;
+    }
 
-        .metric-card {
-            border: 1px solid rgba(128,128,128,.18);
-            border-radius: 14px;
-            padding: 16px;
-            background: rgba(128,128,128,.035);
-        }
+    .hero {
+        padding: 28px;
+        border-radius: 20px;
+        border: 1px solid rgba(128,128,128,.16);
+        background: linear-gradient(
+            135deg,
+            rgba(128,128,128,.08),
+            rgba(128,128,128,.025)
+        );
+        margin-bottom: 20px;
+    }
 
-        .signal-card {
-            border: 1px solid rgba(128,128,128,.20);
-            border-radius: 18px;
-            padding: 22px;
-            background: rgba(128,128,128,.045);
-        }
+    .hero-title {
+        font-size: 42px;
+        font-weight: 850;
+        letter-spacing: -2px;
+        margin-bottom: 5px;
+    }
 
-        .ticker-title {
-            font-size: 32px;
-            font-weight: 800;
-            letter-spacing: -1px;
-        }
+    .hero-subtitle {
+        font-size: 16px;
+        color: rgba(128,128,128,.9);
+    }
 
-        .small-label {
-            font-size: 12px;
-            color: rgba(128,128,128,.85);
-            text-transform: uppercase;
-            letter-spacing: .5px;
-        }
+    .section-title {
+        font-size: 23px;
+        font-weight: 750;
+        letter-spacing: -.5px;
+    }
 
-        .small-value {
-            font-size: 18px;
-            font-weight: 700;
-        }
+    .stock-card {
+        border: 1px solid rgba(128,128,128,.16);
+        border-radius: 16px;
+        padding: 17px;
+        background: rgba(128,128,128,.025);
+        min-height: 165px;
+    }
 
-        div[data-testid="stMetric"] {
-            border: 1px solid rgba(128,128,128,.15);
-            border-radius: 12px;
-            padding: 12px;
-            background: rgba(128,128,128,.025);
-        }
+    .signal-card {
+        border: 1px solid rgba(128,128,128,.18);
+        border-radius: 18px;
+        padding: 22px;
+        background: rgba(128,128,128,.035);
+    }
+
+    .metric-card {
+        border: 1px solid rgba(128,128,128,.15);
+        border-radius: 13px;
+        padding: 13px;
+        background: rgba(128,128,128,.025);
+    }
+
+    .metric-label {
+        color: rgba(128,128,128,.8);
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: .6px;
+    }
+
+    .metric-value {
+        font-size: 19px;
+        font-weight: 750;
+        margin-top: 3px;
+    }
+
+    .ticker-title {
+        font-size: 34px;
+        font-weight: 850;
+        letter-spacing: -1.5px;
+    }
+
+    div[data-testid="stMetric"] {
+        border: 1px solid rgba(128,128,128,.13);
+        border-radius: 12px;
+        padding: 10px;
+        background: rgba(128,128,128,.02);
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -92,25 +132,31 @@ pages = {
     ]
 }
 
+
 pg = st.navigation(pages)
 
+
 with st.sidebar:
-    st.markdown('<div class="statix-logo">Statix</div>', unsafe_allow_html=True)
-    st.caption("Market intelligence dashboard")
+
+    st.markdown(
+        '<div class="statix-logo">Statix</div>',
+        unsafe_allow_html=True,
+    )
+
+    st.caption(
+        "Market intelligence dashboard"
+    )
 
     st.divider()
 
-    st.caption("Model")
-    st.code("V6 • Ensemble", language=None)
-
-    st.caption("Data")
-    st.code("Yahoo Finance", language=None)
+    st.markdown("**V6.1 Ensemble**")
+    st.caption("Technical + market-relative features")
 
     st.divider()
 
     st.caption(
-        "Predictions are model outputs, not financial advice. "
-        "Market data may be delayed."
+        "Market data may be delayed. Model outputs are estimates, not financial advice."
     )
+
 
 pg.run()

@@ -20,29 +20,49 @@ from src.ui.components import (
 st.title("Watchlist")
 
 st.caption(
-    "Compact market view. Charts use historical data; saved predictions are shown without retraining."
+    "Compact view of your saved securities."
 )
 
 
-if st.button(
-    "Refresh quotes",
-    use_container_width=False,
-):
+top1, top2 = st.columns(
+    [4, 1]
+)
 
-    st.cache_data.clear()
-    st.rerun()
+with top1:
+
+    st.write(
+        "Quotes refresh frequently. "
+        "Historical charts are cached."
+    )
+
+with top2:
+
+    if st.button(
+        "Refresh",
+        use_container_width=True,
+    ):
+
+        st.cache_data.clear()
+        st.rerun()
 
 
 watchlist = get_watchlist()
 
+
 if not watchlist:
 
     st.info(
-        "Your watchlist is empty. Search for a stock and add it."
+        "Your watchlist is empty."
     )
 
-    if st.button("Search stocks"):
-        st.switch_page("pages/search.py")
+    if st.button(
+        "Search stocks",
+        use_container_width=True,
+    ):
+
+        st.switch_page(
+            "pages/search.py"
+        )
 
     st.stop()
 
@@ -76,48 +96,49 @@ for start in range(
 
         with col:
 
-            quote = get_quote(ticker)
-
-            price = quote.get(
-                "price"
-            )
-
-            daily_change = quote.get(
-                "change_pct"
-            )
-
-            prediction = prediction_lookup.get(
+            quote = get_quote(
                 ticker
+            )
+
+            prediction = (
+                prediction_lookup.get(
+                    ticker
+                )
             )
 
             st.markdown(
                 f"## {ticker}"
             )
 
-            price_col, signal_col = st.columns(
-                [1.3, 1]
+            left, right = st.columns(
+                [1.4, 1]
             )
 
-            with price_col:
+            with left:
 
                 st.markdown(
-                    f"### {format_money(price)}"
+                    f"### {format_money(quote.get('price'))}"
                 )
 
                 st.caption(
-                    f"Today: {format_percent(daily_change)}"
+                    "Today: "
+                    + format_percent(
+                        quote.get(
+                            "change_pct"
+                        )
+                    )
                 )
 
-            with signal_col:
+            with right:
 
                 if prediction:
 
                     st.markdown(
-                        f"**{prediction.get('direction', '—')}**"
+                        f"**{prediction.get('direction', 'Neutral')}**"
                     )
 
                     st.caption(
-                        "Saved model analysis"
+                        "Saved model signal"
                     )
 
                 else:
@@ -126,28 +147,25 @@ for start in range(
                         "No saved analysis"
                     )
 
-            try:
+            chart = get_stock_data(
+                ticker,
+                period="6mo",
+            )
 
-                chart_df = get_stock_data(
-                    ticker,
-                    period="6mo",
-                    interval="1d",
-                )
-
-                mini_chart(chart_df)
-
-            except Exception:
-
-                st.caption(
-                    "Chart unavailable"
-                )
+            mini_chart(
+                chart
+            )
 
             if prediction:
 
-                c1, c2, c3, c4 = st.columns(4)
+                c1, c2, c3, c4 = st.columns(
+                    4
+                )
 
                 with c1:
+
                     st.caption("UP")
+
                     st.write(
                         format_probability(
                             prediction.get(
@@ -157,7 +175,9 @@ for start in range(
                     )
 
                 with c2:
+
                     st.caption("5D")
+
                     st.write(
                         format_percent(
                             prediction.get(
@@ -167,7 +187,9 @@ for start in range(
                     )
 
                 with c3:
+
                     st.caption("CONF.")
+
                     st.write(
                         format_probability(
                             prediction.get(
@@ -177,7 +199,9 @@ for start in range(
                     )
 
                 with c4:
+
                     st.caption("ACC.")
+
                     st.write(
                         format_probability(
                             prediction.get(
@@ -187,14 +211,19 @@ for start in range(
                     )
 
                 st.caption(
-                    f"Analysis date: "
-                    f"{prediction.get('market_date', '—')}"
+                    "Analysis: "
+                    + str(
+                        prediction.get(
+                            "market_date",
+                            "—",
+                        )
+                    )
                 )
 
             else:
 
                 st.caption(
-                    "Analyze this stock to generate a model forecast."
+                    "No model analysis saved yet."
                 )
 
             a, b = st.columns(2)
@@ -203,7 +232,7 @@ for start in range(
 
                 if st.button(
                     "Analyze",
-                    key=f"watch_analyze_{ticker}",
+                    key=f"analyze_watch_{ticker}",
                     use_container_width=True,
                 ):
 
@@ -219,7 +248,7 @@ for start in range(
 
                 if st.button(
                     "Remove",
-                    key=f"watch_remove_{ticker}",
+                    key=f"remove_watch_{ticker}",
                     use_container_width=True,
                 ):
 
