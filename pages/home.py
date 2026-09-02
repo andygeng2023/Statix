@@ -36,7 +36,7 @@ if not watchlist:
     st.page_link(
         "pages/search.py",
         label="Search stocks",
-        icon="⌕",
+        icon="🔎",
     )
 
     st.stop()
