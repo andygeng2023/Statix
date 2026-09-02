@@ -7,49 +7,142 @@ from sklearn.ensemble import (
     RandomForestRegressor,
 )
 from sklearn.linear_model import LogisticRegression, Ridge
-from sklearn.pipeline import make_pipeline
+from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score, mean_squared_error
 
 
-MODEL_VERSION = "statix-v5-ensemble-1"
+MODEL_VERSION = "statix-v6-ensemble-1"
 
-WEIGHTS = np.array([0.40, 0.35, 0.25])
+CLASS_NAMES = {
+    0: "Strong Bearish",
+    1: "Bearish",
+    2: "Neutral",
+    3: "Bullish",
+    4: "Strong Bullish",
+}
+
+WEIGHTS = np.array([
+    0.45,
+    0.35,
+    0.20,
+])
+
+
+def _make_classifiers():
+
+    return [
+        HistGradientBoostingClassifier(
+            max_iter=180,
+            learning_rate=0.045,
+            max_leaf_nodes=15,
+            min_samples_leaf=12,
+            l2_regularization=2.0,
+            random_state=42,
+        ),
+
+        RandomForestClassifier(
+            n_estimators=260,
+            max_depth=12,
+            min_samples_leaf=5,
+            max_features="sqrt",
+            class_weight="balanced_subsample",
+            n_jobs=-1,
+            random_state=42,
+        ),
+
+        Pipeline([
+            (
+                "scale",
+                StandardScaler()
+            ),
+            (
+                "model",
+                LogisticRegression(
+                    max_iter=1200,
+                    C=0.35,
+                    class_weight="balanced",
+                    multi_class="auto",
+                    random_state=42,
+                )
+            ),
+        ]),
+    ]
+
+
+def _make_regressors():
+
+    return [
+        HistGradientBoostingRegressor(
+            max_iter=180,
+            learning_rate=0.045,
+            max_leaf_nodes=15,
+            min_samples_leaf=12,
+            l2_regularization=2.0,
+            loss="huber",
+            random_state=42,
+        ),
+
+        RandomForestRegressor(
+            n_estimators=260,
+            max_depth=12,
+            min_samples_leaf=5,
+            max_features="sqrt",
+            n_jobs=-1,
+            random_state=42,
+        ),
+
+        Pipeline([
+            (
+                "scale",
+                StandardScaler()
+            ),
+            (
+                "model",
+                Ridge(alpha=8.0)
+            ),
+        ]),
+    ]
+
+
+def _probability_matrix(model, X, all_classes):
+
+    probabilities = model.predict_proba(X)
+
+    output = np.zeros(
+        (len(X), len(all_classes))
+    )
+
+    for i, cls in enumerate(model.classes_):
+        position = list(all_classes).index(cls)
+        output[:, position] = probabilities[:, i]
+
+    return output
 
 
 def train_and_predict(
-    features,
+    training_df,
+    latest_df,
     feature_columns,
-    horizon=5,
 ):
-    if features.empty:
-        raise ValueError("No usable historical data was produced.")
 
-    required = feature_columns + ["target", "future_return"]
-
-    data = features.dropna(subset=required).copy()
-
-    if len(data) < 180:
+    if len(training_df) < 220:
         raise ValueError(
-            f"Only {len(data)} usable historical rows are available. "
-            "At least 180 are required."
+            "Not enough historical feature rows."
         )
 
-    # Make sure both target classes exist.
-    if data["target"].nunique() < 2:
+    if latest_df.empty:
         raise ValueError(
-            "Historical data does not contain enough variation "
-            "to train the prediction model."
+            "No usable latest feature row."
         )
 
-    X = data[feature_columns]
-    y = data["target"]
-    y_return = data["future_return"]
+    X = training_df[feature_columns]
+    y = training_df["target"].astype(int)
 
-    split = int(len(data) * 0.80)
+    y_return = training_df["future_return"]
 
-    if split < 100 or len(data) - split < 30:
-        raise ValueError("Not enough historical data for validation.")
+    # Chronological split.
+    split = int(len(X) * 0.82)
 
     X_train = X.iloc[:split]
     X_test = X.iloc[split:]
@@ -60,172 +153,243 @@ def train_and_predict(
     r_train = y_return.iloc[:split]
     r_test = y_return.iloc[split:]
 
-    # -----------------------------
-    # Classification models
-    # -----------------------------
+    all_classes = np.array([0, 1, 2, 3, 4])
 
-    classifier_1 = HistGradientBoostingClassifier(
-        max_iter=300,
-        learning_rate=0.035,
-        max_leaf_nodes=15,
-        l2_regularization=1.5,
-        random_state=42,
-    )
+    classifiers = _make_classifiers()
+    regressors = _make_regressors()
 
-    classifier_2 = RandomForestClassifier(
-        n_estimators=500,
-        max_depth=12,
-        min_samples_leaf=5,
-        max_features="sqrt",
-        class_weight="balanced",
-        random_state=42,
-        n_jobs=-1,
-    )
+    classifier_probabilities = []
+    regression_predictions = []
 
-    classifier_3 = make_pipeline(
-        StandardScaler(),
-        LogisticRegression(
-            max_iter=2000,
-            C=0.5,
-            random_state=42,
-        ),
-    )
+    model_accuracies = []
+    model_rmse = []
 
-    classifiers = [
-        classifier_1,
-        classifier_2,
-        classifier_3,
-    ]
+    for classifier in classifiers:
 
-    probabilities = []
-
-    for model in classifiers:
-        model.fit(X_train, y_train)
-        probabilities.append(
-            model.predict_proba(X_test)[:, 1]
+        classifier.fit(
+            X_train,
+            y_train,
         )
 
-    test_probability = np.average(
-        np.vstack(probabilities),
-        axis=0,
-        weights=WEIGHTS,
-    )
-
-    test_prediction = (test_probability >= 0.5).astype(int)
-
-    accuracy = accuracy_score(
-        y_test,
-        test_prediction,
-    )
-
-    # -----------------------------
-    # Regression models
-    # -----------------------------
-
-    regressor_1 = HistGradientBoostingRegressor(
-        max_iter=300,
-        learning_rate=0.035,
-        max_leaf_nodes=15,
-        l2_regularization=1.5,
-        random_state=42,
-    )
-
-    regressor_2 = RandomForestRegressor(
-        n_estimators=500,
-        max_depth=12,
-        min_samples_leaf=5,
-        max_features="sqrt",
-        random_state=42,
-        n_jobs=-1,
-    )
-
-    regressor_3 = make_pipeline(
-        StandardScaler(),
-        Ridge(alpha=5.0),
-    )
-
-    regressors = [
-        regressor_1,
-        regressor_2,
-        regressor_3,
-    ]
-
-    return_predictions = []
-
-    for model in regressors:
-        model.fit(X_train, r_train)
-
-        return_predictions.append(
-            model.predict(X_test)
+        probabilities = _probability_matrix(
+            classifier,
+            X_test,
+            all_classes,
         )
 
-    test_return = np.average(
-        np.vstack(return_predictions),
-        axis=0,
-        weights=WEIGHTS,
-    )
+        classifier_probabilities.append(
+            probabilities
+        )
 
-    rmse = float(
-        np.sqrt(
-            mean_squared_error(
-                r_test,
-                test_return,
+        predictions = all_classes[
+            np.argmax(probabilities, axis=1)
+        ]
+
+        model_accuracies.append(
+            accuracy_score(
+                y_test,
+                predictions,
             )
         )
-    )
 
-    # -----------------------------
-    # Latest prediction
-    # -----------------------------
+    for regressor in regressors:
 
-    latest = X.iloc[[-1]]
+        regressor.fit(
+            X_train,
+            r_train,
+        )
+
+        predictions = regressor.predict(X_test)
+
+        regression_predictions.append(
+            predictions
+        )
+
+        model_rmse.append(
+            mean_squared_error(
+                r_test,
+                predictions,
+                squared=False,
+            )
+        )
+
+    # -------------------------
+    # Train final models
+    # -------------------------
+
+    latest_X = latest_df[
+        feature_columns
+    ].iloc[[-1]]
 
     latest_probabilities = []
 
-    for model in classifiers:
-        latest_probabilities.append(
-            model.predict_proba(latest)[:, 1][0]
+    final_regression_predictions = []
+
+    for classifier in _make_classifiers():
+
+        classifier.fit(
+            X,
+            y,
         )
 
-    probability_up = float(
-        np.average(
-            latest_probabilities,
-            weights=WEIGHTS,
+        probabilities = _probability_matrix(
+            classifier,
+            latest_X,
+            all_classes,
+        )[0]
+
+        latest_probabilities.append(
+            probabilities
         )
+
+    for regressor in _make_regressors():
+
+        regressor.fit(
+            X,
+            y_return,
+        )
+
+        final_regression_predictions.append(
+            float(
+                regressor.predict(latest_X)[0]
+            )
+        )
+
+    latest_probabilities = np.array(
+        latest_probabilities
     )
 
-    latest_returns = []
+    ensemble_probability = (
+        latest_probabilities * WEIGHTS[:, None]
+    ).sum(axis=0)
 
-    for model in regressors:
-        latest_returns.append(
-            float(model.predict(latest)[0])
-        )
+    ensemble_probability = (
+        ensemble_probability
+        / ensemble_probability.sum()
+    )
 
     expected_return = float(
         np.average(
-            latest_returns,
+            final_regression_predictions,
             weights=WEIGHTS,
         )
     )
 
-    if probability_up >= 0.55:
+    # -------------------------
+    # Signal
+    # -------------------------
+
+    up_probability = float(
+        ensemble_probability[3]
+        + ensemble_probability[4]
+    )
+
+    down_probability = float(
+        ensemble_probability[0]
+        + ensemble_probability[1]
+    )
+
+    strongest_class = int(
+        np.argmax(ensemble_probability)
+    )
+
+    if (
+        strongest_class >= 3
+        and up_probability >= 0.55
+    ):
         direction = "Bullish"
-    elif probability_up <= 0.45:
+
+    elif (
+        strongest_class <= 1
+        and down_probability >= 0.55
+    ):
         direction = "Bearish"
+
     else:
         direction = "Neutral"
 
-    confidence = abs(probability_up - 0.5) * 2
+    # -------------------------
+    # Model agreement
+    # -------------------------
+
+    model_up_probabilities = (
+        latest_probabilities[:, 3]
+        + latest_probabilities[:, 4]
+    )
+
+    agreement = float(
+        1 - np.std(model_up_probabilities) * 2
+    )
+
+    agreement = max(
+        0.0,
+        min(1.0, agreement),
+    )
+
+    # -------------------------
+    # Validation
+    # -------------------------
+
+    accuracy = float(
+        np.average(
+            model_accuracies,
+            weights=WEIGHTS,
+        )
+    )
+
+    rmse = float(
+        np.average(
+            model_rmse,
+            weights=WEIGHTS,
+        )
+    )
+
+    majority_baseline = float(
+        y_test.value_counts(
+            normalize=True
+        ).max()
+    )
+
+    improvement = accuracy - majority_baseline
+
+    # -------------------------
+    # Confidence
+    # -------------------------
+
+    directional_strength = abs(
+        up_probability - 0.5
+    ) * 2
+
+    confidence = (
+        directional_strength * 0.45
+        + agreement * 0.30
+        + min(accuracy, 1) * 0.25
+    )
+
+    confidence = max(
+        0.0,
+        min(1.0, confidence),
+    )
 
     return {
-        "model_version": MODEL_VERSION,
-        "horizon": horizon,
         "direction": direction,
-        "probability_up": probability_up,
         "expected_return": expected_return,
+        "probability_up": up_probability,
+        "probability_down": down_probability,
         "confidence": confidence,
-        "test_accuracy": float(accuracy),
-        "return_rmse": rmse,
-        "training_rows": len(X_train),
+        "agreement": agreement,
+        "accuracy": accuracy,
+        "baseline_accuracy": majority_baseline,
+        "improvement": improvement,
+        "rmse": rmse,
+        "training_rows": len(X),
         "validation_rows": len(X_test),
+        "class_probabilities": {
+            CLASS_NAMES[i]: float(
+                ensemble_probability[i]
+            )
+            for i in range(5)
+        },
+        "model_accuracies": model_accuracies,
+        "model_rmse": model_rmse,
     }

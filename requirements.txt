@@ -1,8 +1,8 @@
 streamlit>=1.40
-yfinance
-pandas
-numpy
-scikit-learn
-plotly
-sqlalchemy
-requests
+yfinance>=0.2.40
+pandas>=2.0
+numpy>=1.24
+scikit-learn>=1.4
+plotly>=5.18
+sqlalchemy>=2.0
+requests>=2.31

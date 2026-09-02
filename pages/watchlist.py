@@ -1,284 +1,232 @@
 import streamlit as st
 
-from src.data.market import get_quote, get_stock_data
+from src.data.market import (
+    get_quote,
+    get_stock_data,
+)
 from src.storage.database import (
-    get_watchlist,
-    get_cached_prediction,
     get_recently_viewed,
+    get_watchlist,
     remove_from_watchlist,
 )
-from src.models.ensemble import MODEL_VERSION
+from src.ui.components import (
+    format_money,
+    format_percent,
+    format_probability,
+    mini_chart,
+)
 
 
 st.title("Watchlist")
+
 st.caption(
-    "Your saved stocks, market data, and analysis."
+    "Compact market view. Charts use historical data; saved predictions are shown without retraining."
 )
 
 
-# --------------------------------------------------
-# Header controls
-# --------------------------------------------------
+if st.button(
+    "Refresh quotes",
+    use_container_width=False,
+):
 
-header_left, header_right = st.columns([4, 1])
-
-with header_left:
-    st.markdown("### Your stocks")
-
-with header_right:
-    if st.button(
-        "Search",
-        use_container_width=True,
-    ):
-        st.switch_page("pages/search.py")
+    st.cache_data.clear()
+    st.rerun()
 
 
 watchlist = get_watchlist()
 
-
 if not watchlist:
+
     st.info(
-        "Your watchlist is empty. Search for a stock to add it."
+        "Your watchlist is empty. Search for a stock and add it."
     )
 
-    if st.button(
-        "Search up a stock",
-        use_container_width=True,
-    ):
+    if st.button("Search stocks"):
         st.switch_page("pages/search.py")
 
     st.stop()
 
 
-# --------------------------------------------------
-# Card grid
-# --------------------------------------------------
+recent = get_recently_viewed(
+    limit=100
+)
 
-for row_start in range(0, len(watchlist), 2):
+prediction_lookup = {
+    item["ticker"]: item
+    for item in recent
+}
 
-    row = watchlist[row_start:row_start + 2]
 
-    columns = st.columns(2)
+for start in range(
+    0,
+    len(watchlist),
+    2,
+):
 
-    for column, ticker in zip(columns, row):
+    row = watchlist[
+        start:start + 2
+    ]
 
-        with column:
+    cols = st.columns(2)
 
-            # --------------------------------------
-            # Fast quote
-            # --------------------------------------
+    for col, ticker in zip(
+        cols,
+        row,
+    ):
+
+        with col:
 
             quote = get_quote(ticker)
 
-            # --------------------------------------
-            # Saved prediction
-            # --------------------------------------
-
-            cached_prediction = None
-
-            # We use the most recent viewed prediction.
-            # No model training happens on this page.
-            recent = get_recently_viewed(
-                limit=len(watchlist) + 5
+            price = quote.get(
+                "price"
             )
 
-            for item in recent:
-                if item["ticker"] == ticker:
-                    cached_prediction = item
-                    break
+            daily_change = quote.get(
+                "change_pct"
+            )
 
-            # --------------------------------------
-            # Card
-            # --------------------------------------
+            prediction = prediction_lookup.get(
+                ticker
+            )
 
-            with st.container(border=True):
+            st.markdown(
+                f"## {ticker}"
+            )
 
-                title_col, signal_col = st.columns(
-                    [3, 1]
+            price_col, signal_col = st.columns(
+                [1.3, 1]
+            )
+
+            with price_col:
+
+                st.markdown(
+                    f"### {format_money(price)}"
                 )
 
-                with title_col:
+                st.caption(
+                    f"Today: {format_percent(daily_change)}"
+                )
+
+            with signal_col:
+
+                if prediction:
 
                     st.markdown(
-                        f"### {ticker}"
+                        f"**{prediction.get('direction', '—')}**"
                     )
 
-                    if quote["price"] is not None:
-
-                        price_text = (
-                            f"${quote['price']:,.2f}"
-                        )
-
-                        if quote["change_pct"] is not None:
-                            price_text += (
-                                f"  "
-                                f"{quote['change_pct']:+.2f}%"
-                            )
-
-                        st.markdown(
-                            f"**{price_text}**"
-                        )
-
-                    else:
-                        st.caption(
-                            "Price unavailable"
-                        )
-
-                with signal_col:
-
-                    if cached_prediction:
-
-                        direction = (
-                            cached_prediction.get(
-                                "direction"
-                            )
-                        )
-
-                        if direction:
-                            st.markdown(
-                                f"**{direction}**"
-                            )
-
-                # ----------------------------------
-                # Metrics
-                # ----------------------------------
-
-                metric_1, metric_2, metric_3 = st.columns(3)
-
-                if cached_prediction:
-
-                    with metric_1:
-                        st.caption("Up")
-                        probability = (
-                            cached_prediction.get(
-                                "probability_up"
-                            )
-                        )
-
-                        if probability is not None:
-                            st.write(
-                                f"{probability * 100:.0f}%"
-                            )
-                        else:
-                            st.write("—")
-
-                    with metric_2:
-                        st.caption("Expected 5D")
-                        expected = (
-                            cached_prediction.get(
-                                "expected_return"
-                            )
-                        )
-
-                        if expected is not None:
-                            st.write(
-                                f"{expected * 100:+.1f}%"
-                            )
-                        else:
-                            st.write("—")
-
-                    with metric_3:
-                        st.caption("Confidence")
-                        confidence = (
-                            cached_prediction.get(
-                                "confidence"
-                            )
-                        )
-
-                        if confidence is not None:
-                            st.write(
-                                f"{confidence * 100:.0f}%"
-                            )
-                        else:
-                            st.write("—")
+                    st.caption(
+                        "Saved model analysis"
+                    )
 
                 else:
 
-                    with metric_1:
-                        st.caption("Analysis")
-                        st.write("Not analyzed")
+                    st.caption(
+                        "No saved analysis"
+                    )
 
-                    with metric_2:
-                        st.caption("Expected 5D")
-                        st.write("—")
+            try:
 
-                    with metric_3:
-                        st.caption("Confidence")
-                        st.write("—")
-
-                # ----------------------------------
-                # Graph
-                # ----------------------------------
-
-                chart_data = get_stock_data(
+                chart_df = get_stock_data(
                     ticker,
                     period="6mo",
                     interval="1d",
                 )
 
-                if not chart_data.empty:
+                mini_chart(chart_df)
 
-                    st.line_chart(
-                        chart_data["Close"],
-                        height=120,
-                    )
+            except Exception:
 
-                # ----------------------------------
-                # Analysis status
-                # ----------------------------------
+                st.caption(
+                    "Chart unavailable"
+                )
 
-                if cached_prediction:
+            if prediction:
 
-                    market_date = (
-                        cached_prediction.get(
-                            "last_market_date"
+                c1, c2, c3, c4 = st.columns(4)
+
+                with c1:
+                    st.caption("UP")
+                    st.write(
+                        format_probability(
+                            prediction.get(
+                                "probability_up"
+                            )
                         )
                     )
 
-                    if market_date:
-
-                        st.caption(
-                            f"Saved analysis: {market_date}"
+                with c2:
+                    st.caption("5D")
+                    st.write(
+                        format_percent(
+                            prediction.get(
+                                "expected_return"
+                            )
                         )
-
-                else:
-
-                    st.caption(
-                        "No saved prediction yet."
                     )
 
-                # ----------------------------------
-                # Buttons
-                # ----------------------------------
-
-                action_1, action_2 = st.columns(2)
-
-                with action_1:
-
-                    if st.button(
-                        "Analyze",
-                        key=f"watch_analyze_{ticker}",
-                        use_container_width=True,
-                    ):
-
-                        st.session_state[
-                            "selected_ticker"
-                        ] = ticker
-
-                        st.switch_page(
-                            "pages/prediction.py"
+                with c3:
+                    st.caption("CONF.")
+                    st.write(
+                        format_probability(
+                            prediction.get(
+                                "confidence"
+                            )
                         )
+                    )
 
-                with action_2:
-
-                    if st.button(
-                        "Remove",
-                        key=f"watch_remove_{ticker}",
-                        use_container_width=True,
-                    ):
-
-                        remove_from_watchlist(
-                            ticker
+                with c4:
+                    st.caption("ACC.")
+                    st.write(
+                        format_probability(
+                            prediction.get(
+                                "accuracy"
+                            )
                         )
+                    )
 
-                        st.rerun()
+                st.caption(
+                    f"Analysis date: "
+                    f"{prediction.get('market_date', '—')}"
+                )
+
+            else:
+
+                st.caption(
+                    "Analyze this stock to generate a model forecast."
+                )
+
+            a, b = st.columns(2)
+
+            with a:
+
+                if st.button(
+                    "Analyze",
+                    key=f"watch_analyze_{ticker}",
+                    use_container_width=True,
+                ):
+
+                    st.session_state[
+                        "selected_ticker"
+                    ] = ticker
+
+                    st.switch_page(
+                        "pages/prediction.py"
+                    )
+
+            with b:
+
+                if st.button(
+                    "Remove",
+                    key=f"watch_remove_{ticker}",
+                    use_container_width=True,
+                ):
+
+                    remove_from_watchlist(
+                        ticker
+                    )
+
+                    st.rerun()
+
+            st.divider()

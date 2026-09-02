@@ -1,17 +1,27 @@
-import streamlit as st
-import yfinance as yf
+import time
+
+import numpy as np
 import pandas as pd
+import yfinance as yf
+import streamlit as st
 
 
 DEFAULT_PERIOD = "5y"
+QUOTE_TTL = 15
+HISTORY_TTL = 300
 
 
-@st.cache_data(ttl=300, show_spinner=False)
-def get_stock_data(ticker: str, period: str = DEFAULT_PERIOD, interval: str = "1d"):
+@st.cache_data(ttl=HISTORY_TTL, show_spinner=False)
+def get_stock_data(
+    ticker: str,
+    period: str = DEFAULT_PERIOD,
+    interval: str = "1d",
+) -> pd.DataFrame:
+
     ticker = ticker.upper().strip()
 
     try:
-        data = yf.download(
+        df = yf.download(
             ticker,
             period=period,
             interval=interval,
@@ -22,90 +32,152 @@ def get_stock_data(ticker: str, period: str = DEFAULT_PERIOD, interval: str = "1
     except Exception:
         return pd.DataFrame()
 
-    if data is None or data.empty:
+    if df is None or df.empty:
         return pd.DataFrame()
 
-    # Handle yfinance MultiIndex columns
-    if isinstance(data.columns, pd.MultiIndex):
-        data.columns = data.columns.get_level_values(0)
+    if isinstance(df.columns, pd.MultiIndex):
+        try:
+            df = df.xs(ticker, axis=1, level=-1)
+        except Exception:
+            df.columns = df.columns.get_level_values(0)
 
     required = ["Open", "High", "Low", "Close", "Volume"]
 
-    missing = [column for column in required if column not in data.columns]
-    if missing:
-        return pd.DataFrame()
+    for col in required:
+        if col not in df.columns:
+            return pd.DataFrame()
 
-    data = data[required].copy()
-    data = data.dropna(subset=["Open", "High", "Low", "Close"])
+    df = df[required].copy()
 
-    data.index = pd.to_datetime(data.index)
-    data = data[~data.index.duplicated(keep="last")]
-    data = data.sort_index()
+    df.index = pd.to_datetime(df.index)
 
-    return data
+    if getattr(df.index, "tz", None) is not None:
+        df.index = df.index.tz_localize(None)
+
+    df = df.sort_index()
+    df = df[~df.index.duplicated(keep="last")]
+
+    for col in required:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    df = df.dropna(subset=["Open", "High", "Low", "Close"])
+
+    return df
 
 
-@st.cache_data(ttl=30, show_spinner=False)
-def get_quote(ticker: str):
+def _safe_number(value):
+    try:
+        value = float(value)
+
+        if np.isnan(value) or np.isinf(value):
+            return None
+
+        return value
+    except Exception:
+        return None
+
+
+@st.cache_data(ttl=QUOTE_TTL, show_spinner=False)
+def get_quote(ticker: str) -> dict:
+
     ticker = ticker.upper().strip()
 
-    try:
-        stock = yf.Ticker(ticker)
-        info = stock.fast_info
-
-        price = info.get("lastPrice")
-        previous = info.get("previousClose")
-
-        if price is not None:
-            price = float(price)
-
-        if previous is not None:
-            previous = float(previous)
-
-        change = None
-        change_pct = None
-
-        if price is not None and previous not in (None, 0):
-            change = price - previous
-            change_pct = (change / previous) * 100
-
-        return {
-            "ticker": ticker,
-            "price": price,
-            "previous_close": previous,
-            "change": change,
-            "change_pct": change_pct,
-        }
-
-    except Exception:
-        pass
-
-    # Historical fallback
-    try:
-        data = get_stock_data(ticker, period="5d")
-
-        if len(data) >= 2:
-            current = float(data["Close"].iloc[-1])
-            previous = float(data["Close"].iloc[-2])
-
-            change = current - previous
-            change_pct = (change / previous) * 100 if previous else None
-
-            return {
-                "ticker": ticker,
-                "price": current,
-                "previous_close": previous,
-                "change": change,
-                "change_pct": change_pct,
-            }
-
-    except Exception:
-        pass
-
-    return {
+    result = {
         "ticker": ticker,
         "price": None,
-        "previous_close": None,
+        "previous": None,
         "change": None,
         "change_pct": None,
+        "volume": None,
+        "market_cap": None,
+        "timestamp": time.time(),
     }
+
+    try:
+        obj = yf.Ticker(ticker)
+
+        try:
+            info = obj.fast_info
+
+            price = _safe_number(
+                info.get("last_price")
+                or info.get("regularMarketPrice")
+            )
+
+            previous = _safe_number(
+                info.get("previous_close")
+                or info.get("regularMarketPreviousClose")
+            )
+
+            volume = _safe_number(info.get("last_volume"))
+            market_cap = _safe_number(info.get("market_cap"))
+
+            if price is not None:
+                result["price"] = price
+
+            if previous is not None:
+                result["previous"] = previous
+
+            if volume is not None:
+                result["volume"] = volume
+
+            if market_cap is not None:
+                result["market_cap"] = market_cap
+
+        except Exception:
+            pass
+
+        if result["price"] is None:
+            fallback = get_stock_data(ticker, period="5d")
+
+            if not fallback.empty:
+                result["price"] = float(fallback["Close"].iloc[-1])
+
+                if len(fallback) >= 2:
+                    result["previous"] = float(
+                        fallback["Close"].iloc[-2]
+                    )
+
+                result["volume"] = float(
+                    fallback["Volume"].iloc[-1]
+                )
+
+    except Exception:
+        return result
+
+    if result["price"] is not None and result["previous"] is not None:
+        result["change"] = (
+            result["price"] - result["previous"]
+        )
+
+        if result["previous"] != 0:
+            result["change_pct"] = (
+                result["change"] / result["previous"]
+            )
+
+    return result
+
+
+def get_latest_market_date(df: pd.DataFrame):
+    if df is None or df.empty:
+        return None
+
+    return df.index[-1].date()
+
+
+def format_volume(value):
+    if value is None:
+        return "—"
+
+    value = float(value)
+
+    if value >= 1_000_000_000:
+        return f"{value / 1_000_000_000:.2f}B"
+
+    if value >= 1_000_000:
+        return f"{value / 1_000_000:.2f}M"
+
+    if value >= 1_000:
+        return f"{value / 1_000:.1f}K"
+
+    return f"{value:,.0f}"

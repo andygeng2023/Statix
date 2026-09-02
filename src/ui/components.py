@@ -1,154 +1,168 @@
-import plotly.graph_objects as go
+import pandas as pd
 import streamlit as st
 
 
 def format_money(value):
+
     if value is None:
         return "—"
 
-    return f"${value:,.2f}"
+    return f"${float(value):,.2f}"
 
 
-def format_percent(value, decimals=2):
+def format_percent(value):
+
     if value is None:
         return "—"
 
-    return f"{value * 100:+.{decimals}f}%"
+    return f"{float(value) * 100:+.2f}%"
 
 
 def format_probability(value):
+
     if value is None:
         return "—"
 
-    return f"{value * 100:.0f}%"
+    return f"{float(value) * 100:.1f}%"
 
 
-def mini_chart(df, height=115):
-    if df is None or df.empty or "Close" not in df.columns:
-        return None
+def signal_badge(direction):
 
-    fig = go.Figure()
+    if direction == "Bullish":
+        symbol = "▲"
+    elif direction == "Bearish":
+        symbol = "▼"
+    else:
+        symbol = "•"
 
-    fig.add_trace(
-        go.Scatter(
-            x=df.index,
-            y=df["Close"],
-            mode="lines",
-            line=dict(width=2),
-            hovertemplate="$%{y:,.2f}<extra></extra>",
-        )
+    return f"{symbol} {direction}"
+
+
+def mini_chart(df):
+
+    if df is None or df.empty:
+        st.caption("No chart data")
+        return
+
+    chart = df[["Close"]].tail(90).copy()
+
+    chart.columns = ["Price"]
+
+    st.line_chart(
+        chart,
+        height=120,
+        use_container_width=True,
     )
 
-    fig.update_layout(
-        height=height,
-        margin=dict(
-            l=0,
-            r=0,
-            t=4,
-            b=4,
-        ),
-        showlegend=False,
-        xaxis=dict(
-            visible=False,
-            fixedrange=True,
-        ),
-        yaxis=dict(
-            visible=False,
-            fixedrange=True,
-        ),
-        hovermode="x",
-    )
 
-    return fig
+def metric_grid(items):
 
+    columns = st.columns(len(items))
 
-def show_prediction_metrics(prediction):
-    col1, col2, col3, col4 = st.columns(4)
+    for column, item in zip(columns, items):
 
-    with col1:
-        st.metric(
-            "Signal",
-            prediction.get("direction", "—"),
-        )
+        with column:
 
-    with col2:
-        st.metric(
-            "Up Probability",
-            format_probability(
-                prediction.get("probability_up")
-            ),
-        )
-
-    with col3:
-        st.metric(
-            "Expected Return",
-            format_percent(
-                prediction.get("expected_return")
-            ),
-        )
-
-    with col4:
-        confidence = prediction.get("confidence")
-
-        if confidence is not None:
-            st.metric(
-                "Confidence",
-                f"{confidence * 100:.0f}%",
-            )
-        else:
-            st.metric("Confidence", "—")
-
-
-def prediction_card(item):
-    ticker = item.get("ticker", "—")
-    price = item.get("last_price")
-    direction = item.get("direction")
-    probability = item.get("probability_up")
-    expected_return = item.get("expected_return")
-    confidence = item.get("confidence")
-
-    with st.container(border=True):
-
-        top_left, top_right = st.columns([3, 1])
-
-        with top_left:
             st.markdown(
-                f"### {ticker}"
+                f"""
+                <div class="metric-card">
+                    <div class="small-label">
+                        {item["label"]}
+                    </div>
+                    <div class="small-value">
+                        {item["value"]}
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
             )
 
-            if price is not None:
-                st.caption(
-                    format_money(price)
-                )
 
-        with top_right:
-            if direction:
-                st.markdown(
-                    f"**{direction}**"
-                )
+def prediction_card(prediction):
 
-        # Compact metric row
-        c1, c2, c3 = st.columns(3)
+    direction = prediction.get(
+        "direction",
+        "Neutral",
+    )
 
-        with c1:
-            st.caption("Up probability")
-            st.write(
-                format_probability(probability)
-            )
+    st.markdown(
+        '<div class="signal-card">',
+        unsafe_allow_html=True,
+    )
 
-        with c2:
-            st.caption("Expected 5D")
-            st.write(
-                format_percent(expected_return)
-            )
+    st.markdown(
+        f"### {signal_badge(direction)}"
+    )
 
-        with c3:
-            st.caption("Confidence")
-            if confidence is not None:
-                st.write(
-                    f"{confidence * 100:.0f}%"
-                )
-            else:
-                st.write("—")
+    st.caption(
+        "5-session model outlook"
+    )
 
-        return True
+    metric_grid(
+        [
+            {
+                "label": "Probability Up",
+                "value": format_probability(
+                    prediction.get(
+                        "probability_up"
+                    )
+                ),
+            },
+            {
+                "label": "Expected Return",
+                "value": format_percent(
+                    prediction.get(
+                        "expected_return"
+                    )
+                ),
+            },
+            {
+                "label": "Confidence",
+                "value": format_probability(
+                    prediction.get(
+                        "confidence"
+                    )
+                ),
+            },
+            {
+                "label": "Model Agreement",
+                "value": format_probability(
+                    prediction.get(
+                        "agreement"
+                    )
+                ),
+            },
+        ]
+    )
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+def display_class_probabilities(prediction):
+
+    probabilities = prediction.get(
+        "class_probabilities",
+        {},
+    )
+
+    if not probabilities:
+        return
+
+    frame = pd.DataFrame(
+        {
+            "Signal": list(
+                probabilities.keys()
+            ),
+            "Probability": [
+                value * 100
+                for value in probabilities.values()
+            ],
+        }
+    )
+
+    frame = frame.set_index("Signal")
+
+    st.bar_chart(
+        frame,
+        height=260,
+    )

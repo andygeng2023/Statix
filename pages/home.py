@@ -1,183 +1,168 @@
+import pandas as pd
 import streamlit as st
 
-from src.data.market import get_quote, get_stock_data
-from src.storage.database import (
-    get_watchlist,
-    get_recently_viewed,
-)
+
+def format_money(value):
+
+    if value is None:
+        return "—"
+
+    return f"${float(value):,.2f}"
 
 
-st.title("Statix")
-st.caption(
-    "Market intelligence and machine-learning predictions."
-)
+def format_percent(value):
+
+    if value is None:
+        return "—"
+
+    return f"{float(value) * 100:+.2f}%"
 
 
-# --------------------------------------------------
-# Quick actions
-# --------------------------------------------------
+def format_probability(value):
 
-col1, col2 = st.columns(2)
+    if value is None:
+        return "—"
 
-with col1:
-    if st.button(
-        "Search up a stock",
+    return f"{float(value) * 100:.1f}%"
+
+
+def signal_badge(direction):
+
+    if direction == "Bullish":
+        symbol = "▲"
+    elif direction == "Bearish":
+        symbol = "▼"
+    else:
+        symbol = "•"
+
+    return f"{symbol} {direction}"
+
+
+def mini_chart(df):
+
+    if df is None or df.empty:
+        st.caption("No chart data")
+        return
+
+    chart = df[["Close"]].tail(90).copy()
+
+    chart.columns = ["Price"]
+
+    st.line_chart(
+        chart,
+        height=120,
         use_container_width=True,
-    ):
-        st.switch_page("pages/search.py")
-
-with col2:
-    if st.button(
-        "Open Watchlist",
-        use_container_width=True,
-    ):
-        st.switch_page("pages/watchlist.py")
-
-
-# --------------------------------------------------
-# Discover
-# --------------------------------------------------
-
-st.divider()
-
-st.header("Discover")
-
-discover = [
-    "AAPL",
-    "MSFT",
-    "NVDA",
-    "AMZN",
-    "GOOGL",
-    "META",
-    "TSLA",
-    "SPY",
-]
-
-cols = st.columns(4)
-
-for index, ticker in enumerate(discover):
-
-    with cols[index % 4]:
-
-        quote = get_quote(ticker)
-
-        with st.container(border=True):
-
-            st.subheader(ticker)
-
-            if quote["price"] is not None:
-                st.write(
-                    f"${quote['price']:,.2f}"
-                )
-
-            if quote["change_pct"] is not None:
-                st.caption(
-                    f"{quote['change_pct']:+.2f}% today"
-                )
-
-            if st.button(
-                "Analyze",
-                key=f"discover_{ticker}",
-                use_container_width=True,
-            ):
-                st.session_state["selected_ticker"] = ticker
-                st.switch_page("pages/prediction.py")
-
-
-# --------------------------------------------------
-# Watchlist
-# --------------------------------------------------
-
-st.divider()
-
-st.header("Your Watchlist")
-
-watchlist = get_watchlist()
-
-if not watchlist:
-
-    st.caption("No stocks saved yet.")
-
-else:
-
-    cols = st.columns(min(3, len(watchlist)))
-
-    for index, ticker in enumerate(watchlist[:6]):
-
-        with cols[index % len(cols)]:
-
-            quote = get_quote(ticker)
-
-            with st.container(border=True):
-
-                st.subheader(ticker)
-
-                if quote["price"] is not None:
-                    st.write(
-                        f"${quote['price']:,.2f}"
-                    )
-
-                if quote["change_pct"] is not None:
-                    st.caption(
-                        f"{quote['change_pct']:+.2f}%"
-                    )
-
-                if st.button(
-                    "Open",
-                    key=f"watch_{ticker}",
-                    use_container_width=True,
-                ):
-                    st.session_state["selected_ticker"] = ticker
-                    st.switch_page("pages/prediction.py")
-
-
-# --------------------------------------------------
-# Recently viewed
-# --------------------------------------------------
-
-st.divider()
-
-st.header("Recently Viewed")
-
-recent = get_recently_viewed()
-
-if not recent:
-
-    st.caption(
-        "Stocks you analyze will appear here."
     )
 
-else:
 
-    for item in recent:
+def metric_grid(items):
 
-        ticker = item["ticker"]
+    columns = st.columns(len(items))
 
-        with st.container(border=True):
+    for column, item in zip(columns, items):
 
-            left, middle, right = st.columns(
-                [2, 3, 1]
+        with column:
+
+            st.markdown(
+                f"""
+                <div class="metric-card">
+                    <div class="small-label">
+                        {item["label"]}
+                    </div>
+                    <div class="small-value">
+                        {item["value"]}
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
             )
 
-            with left:
-                st.subheader(ticker)
 
-            with middle:
-                st.write(
-                    item["direction"]
-                )
+def prediction_card(prediction):
 
-                st.caption(
-                    f"Up probability: "
-                    f"{item['probability_up'] * 100:.1f}%"
-                )
+    direction = prediction.get(
+        "direction",
+        "Neutral",
+    )
 
-            with right:
+    st.markdown(
+        '<div class="signal-card">',
+        unsafe_allow_html=True,
+    )
 
-                if st.button(
-                    "Open",
-                    key=f"recent_{ticker}",
-                    use_container_width=True,
-                ):
-                    st.session_state["selected_ticker"] = ticker
-                    st.switch_page("pages/prediction.py")
+    st.markdown(
+        f"### {signal_badge(direction)}"
+    )
+
+    st.caption(
+        "5-session model outlook"
+    )
+
+    metric_grid(
+        [
+            {
+                "label": "Probability Up",
+                "value": format_probability(
+                    prediction.get(
+                        "probability_up"
+                    )
+                ),
+            },
+            {
+                "label": "Expected Return",
+                "value": format_percent(
+                    prediction.get(
+                        "expected_return"
+                    )
+                ),
+            },
+            {
+                "label": "Confidence",
+                "value": format_probability(
+                    prediction.get(
+                        "confidence"
+                    )
+                ),
+            },
+            {
+                "label": "Model Agreement",
+                "value": format_probability(
+                    prediction.get(
+                        "agreement"
+                    )
+                ),
+            },
+        ]
+    )
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+def display_class_probabilities(prediction):
+
+    probabilities = prediction.get(
+        "class_probabilities",
+        {},
+    )
+
+    if not probabilities:
+        return
+
+    frame = pd.DataFrame(
+        {
+            "Signal": list(
+                probabilities.keys()
+            ),
+            "Probability": [
+                value * 100
+                for value in probabilities.values()
+            ],
+        }
+    )
+
+    frame = frame.set_index("Signal")
+
+    st.bar_chart(
+        frame,
+        height=260,
+    )

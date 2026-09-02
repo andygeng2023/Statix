@@ -1,102 +1,101 @@
 import numpy as np
+import pandas as pd
 
-from sklearn.metrics import (
-    mean_squared_error,
-)
-
-from .ensemble import (
-    train_classifier_models,
-    train_regression_models,
-    weighted_probability,
-    weighted_return,
-)
+from sklearn.metrics import accuracy_score
 
 
-def run_backtest(
-    features,
+def walk_forward_backtest(
+    training_df,
     feature_columns,
-    train_ratio=0.70,
+    min_train=180,
+    test_size=30,
+    step=30,
 ):
-    data = features.dropna(
-        subset=feature_columns
-        + [
-            "target",
-            "future_return",
-        ]
-    ).copy()
 
-    if len(data) < 250:
-        raise ValueError(
-            "Not enough data for backtesting."
+    if len(training_df) < min_train + test_size:
+        return {
+            "accuracy": None,
+            "baseline": None,
+            "predictions": pd.DataFrame(),
+        }
+
+    X = training_df[feature_columns]
+    y = training_df["target"].astype(int)
+
+    records = []
+
+    start = min_train
+
+    while start + test_size <= len(training_df):
+
+        train_end = start
+        test_end = start + test_size
+
+        X_train = X.iloc[:train_end]
+        y_train = y.iloc[:train_end]
+
+        X_test = X.iloc[train_end:test_end]
+        y_test = y.iloc[train_end:test_end]
+
+        from sklearn.ensemble import (
+            HistGradientBoostingClassifier,
         )
 
-    split = int(
-        len(data) * train_ratio
-    )
-
-    train = data.iloc[:split]
-    test = data.iloc[split:]
-
-    classifier_models = (
-        train_classifier_models(
-            train[feature_columns],
-            train["target"],
+        model = HistGradientBoostingClassifier(
+            max_iter=120,
+            learning_rate=0.05,
+            max_leaf_nodes=12,
+            min_samples_leaf=10,
+            l2_regularization=2,
+            random_state=42,
         )
-    )
 
-    regression_models = (
-        train_regression_models(
-            train[feature_columns],
-            train["future_return"],
+        model.fit(
+            X_train,
+            y_train,
         )
-    )
 
-    probabilities = (
-        weighted_probability(
-            classifier_models,
-            test[feature_columns],
-        )
-    )
+        prediction = model.predict(X_test)
 
-    predictions = (
-        probabilities >= 0.5
-    ).astype(int)
-
-    actual_direction = (
-        test["target"].to_numpy()
-    )
-
-    accuracy = float(
-        (
-            predictions
-            == actual_direction
-        ).mean()
-    )
-
-    predicted_returns = (
-        weighted_return(
-            regression_models,
-            test[feature_columns],
-        )
-    )
-
-    actual_returns = (
-        test[
-            "future_return"
-        ].to_numpy()
-    )
-
-    rmse = float(
-        np.sqrt(
-            mean_squared_error(
-                actual_returns,
-                predicted_returns,
+        for date, actual, predicted in zip(
+            training_df.index[
+                train_end:test_end
+            ],
+            y_test,
+            prediction,
+        ):
+            records.append(
+                {
+                    "date": date,
+                    "actual": int(actual),
+                    "predicted": int(predicted),
+                }
             )
-        )
+
+        start += step
+
+    result = pd.DataFrame(records)
+
+    if result.empty:
+        return {
+            "accuracy": None,
+            "baseline": None,
+            "predictions": result,
+        }
+
+    accuracy = accuracy_score(
+        result["actual"],
+        result["predicted"],
+    )
+
+    baseline = (
+        y.iloc[:min_train]
+        .value_counts(normalize=True)
+        .max()
     )
 
     return {
-        "accuracy": accuracy,
-        "return_rmse": rmse,
-        "samples": len(test),
+        "accuracy": float(accuracy),
+        "baseline": float(baseline),
+        "predictions": result,
     }
