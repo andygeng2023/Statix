@@ -1,141 +1,119 @@
+from __future__ import annotations
+
 import streamlit as st
 
 from src.data.market import get_quote
-from src.data.search import search_symbols
+from src.data.search import search_stocks
 from src.storage.database import (
     add_to_watchlist,
     is_watched,
     remove_from_watchlist,
 )
+from src.ui.components import (
+    format_money,
+    format_percent,
+    inject_css,
+    page_header,
+)
 
 
-st.title("Search")
+inject_css()
 
-st.caption(
-    "Find stocks and ETFs, then open the full Statix analysis."
+
+def open_stock(ticker: str) -> None:
+    st.session_state["selected_ticker"] = ticker
+    st.switch_page("pages/prediction.py")
+
+
+page_header(
+    "Search",
+    "Find a stock, ETF, or other supported market symbol.",
 )
 
 
 query = st.text_input(
     "Search",
-    placeholder="Apple, Microsoft, NVDA, SPY...",
+    placeholder="Apple, Microsoft, NVDA, Tesla...",
 )
 
 
-if query:
-
-    with st.spinner(
-        "Searching..."
-    ):
-
-        results = search_symbols(
-            query
-        )
+if query.strip():
+    results = search_stocks(
+        query,
+        limit=12,
+    )
 
     if not results:
-
         st.warning(
-            "No matching securities found."
+            "No matching securities were found."
         )
 
-    for result in results:
+    for index, result in enumerate(results):
+        ticker = result["symbol"]
 
-        ticker = result[
-            "symbol"
-        ]
-
-        quote = get_quote(
-            ticker
-        )
-
-        c1, c2, c3, c4 = st.columns(
-            [2.8, 1.5, 1.1, 1.2]
-        )
-
-        with c1:
-
-            st.markdown(
-                f"### {ticker}"
+        with st.container(border=True):
+            left, middle, right = st.columns(
+                [2.8, 2, 1.3]
             )
 
-            st.caption(
-                f'{result["name"]} • '
-                f'{result["exchange"]}'
-            )
-
-        with c2:
-
-            st.metric(
-                "Price",
-                (
-                    f'${quote["price"]:,.2f}'
-                    if quote.get("price")
-                    is not None
-                    else "—"
-                ),
-                (
-                    f'{quote["change_pct"] * 100:+.2f}%'
-                    if quote.get(
-                        "change_pct"
-                    )
-                    is not None
-                    else None
-                ),
-            )
-
-        with c3:
-
-            if is_watched(
-                ticker
-            ):
-
-                if st.button(
-                    "Remove",
-                    key=f"remove_{ticker}",
-                    use_container_width=True,
-                ):
-
-                    remove_from_watchlist(
-                        ticker
-                    )
-
-                    st.rerun()
-
-            else:
-
-                if st.button(
-                    "Watch",
-                    key=f"watch_{ticker}",
-                    use_container_width=True,
-                ):
-
-                    add_to_watchlist(
-                        ticker
-                    )
-
-                    st.rerun()
-
-        with c4:
-
-            if st.button(
-                "Analyze",
-                key=f"search_analyze_{ticker}",
-                use_container_width=True,
-            ):
-
-                st.session_state[
-                    "selected_ticker"
-                ] = ticker
-
-                st.switch_page(
-                    "pages/prediction.py"
+            with left:
+                st.markdown(
+                    f"### {ticker}"
+                )
+                st.caption(
+                    result["name"]
                 )
 
-        st.divider()
+            with middle:
+                st.caption(
+                    result["exchange"]
+                    or result["type"]
+                )
+
+                quote = get_quote(ticker)
+
+                st.write(
+                    format_money(
+                        quote.get("price")
+                    )
+                )
+
+                if quote.get("change_pct") is not None:
+                    st.caption(
+                        format_percent(
+                            quote["change_pct"]
+                        )
+                    )
+
+            with right:
+                if st.button(
+                    "Analyze",
+                    key=f"analyze_{ticker}_{index}",
+                    use_container_width=True,
+                ):
+                    open_stock(ticker)
+
+                if is_watched(ticker):
+                    if st.button(
+                        "Remove",
+                        key=f"remove_{ticker}_{index}",
+                        use_container_width=True,
+                    ):
+                        remove_from_watchlist(ticker)
+                        st.rerun()
+                else:
+                    if st.button(
+                        "Watch",
+                        key=f"watch_{ticker}_{index}",
+                        use_container_width=True,
+                    ):
+                        add_to_watchlist(ticker)
+                        st.rerun()
 
 
-st.subheader(
-    "Popular"
+st.markdown(
+    '<div class="section-title">Popular</div>',
+    unsafe_allow_html=True,
 )
 
 popular = [
@@ -144,31 +122,33 @@ popular = [
     "NVDA",
     "AMZN",
     "GOOGL",
-    "TSLA",
     "META",
+    "TSLA",
     "SPY",
 ]
 
+columns = st.columns(4)
 
-cols = st.columns(4)
-
-for col, ticker in zip(
-    cols,
+for column, ticker in zip(
+    columns,
     popular,
 ):
+    with column:
+        quote = get_quote(ticker)
 
-    with col:
+        st.markdown(
+            f"**{ticker}**"
+        )
+
+        st.caption(
+            format_money(
+                quote.get("price")
+            )
+        )
 
         if st.button(
-            ticker,
+            "Analyze",
             key=f"popular_{ticker}",
             use_container_width=True,
         ):
-
-            st.session_state[
-                "selected_ticker"
-            ] = ticker
-
-            st.switch_page(
-                "pages/prediction.py"
-            )
+            open_stock(ticker)

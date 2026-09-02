@@ -1,253 +1,221 @@
+from __future__ import annotations
+
 import numpy as np
 import pandas as pd
 
 
-FEATURE_VERSION = "statix-v6.1-features"
+FEATURE_VERSION = "statix-v6-features-1"
 
 
 def calculate_rsi(
-    series,
-    period=14,
-):
+    series: pd.Series,
+    period: int = 14,
+) -> pd.Series:
 
     delta = series.diff()
 
-    gain = delta.clip(
-        lower=0
-    )
-
-    loss = -delta.clip(
-        upper=0
-    )
+    gain = delta.clip(lower=0)
+    loss = -delta.clip(upper=0)
 
     avg_gain = gain.ewm(
         alpha=1 / period,
-        adjust=False,
         min_periods=period,
+        adjust=False,
     ).mean()
 
     avg_loss = loss.ewm(
         alpha=1 / period,
-        adjust=False,
         min_periods=period,
+        adjust=False,
     ).mean()
 
-    rs = avg_gain / avg_loss.replace(
-        0,
-        np.nan,
-    )
+    rs = avg_gain / avg_loss.replace(0, np.nan)
 
-    return 100 - (
-        100 / (1 + rs)
-    )
+    return 100 - (100 / (1 + rs))
 
 
-def true_range(df):
+def _atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
+    previous_close = df["close"].shift(1)
 
-    previous_close = (
-        df["Close"].shift(1)
-    )
-
-    values = pd.concat(
+    true_range = pd.concat(
         [
-            df["High"] - df["Low"],
-            (
-                df["High"]
-                - previous_close
-            ).abs(),
-            (
-                df["Low"]
-                - previous_close
-            ).abs(),
+            df["high"] - df["low"],
+            (df["high"] - previous_close).abs(),
+            (df["low"] - previous_close).abs(),
         ],
         axis=1,
+    ).max(axis=1)
+
+    return true_range.rolling(period).mean()
+
+
+def _add_market_features(
+    frame: pd.DataFrame,
+    market_df: pd.DataFrame | None,
+) -> pd.DataFrame:
+
+    if market_df is None or market_df.empty:
+        frame["market_return_1d"] = 0.0
+        frame["market_return_5d"] = 0.0
+        frame["market_return_20d"] = 0.0
+        frame["market_volatility"] = 0.0
+        frame["market_trend"] = 1.0
+        frame["relative_return_5d"] = frame["return_5d"]
+        return frame
+
+    market = market_df.copy()
+
+    if "close" not in market.columns:
+        frame["market_return_1d"] = 0.0
+        frame["market_return_5d"] = 0.0
+        frame["market_return_20d"] = 0.0
+        frame["market_volatility"] = 0.0
+        frame["market_trend"] = 1.0
+        frame["relative_return_5d"] = frame["return_5d"]
+        return frame
+
+    market_close = pd.to_numeric(
+        market["close"],
+        errors="coerce",
     )
 
-    return values.max(axis=1)
+    market_features = pd.DataFrame(index=market.index)
+
+    market_features["market_return_1d"] = market_close.pct_change(1)
+    market_features["market_return_5d"] = market_close.pct_change(5)
+    market_features["market_return_20d"] = market_close.pct_change(20)
+
+    market_features["market_volatility"] = (
+        market_close.pct_change()
+        .rolling(20)
+        .std()
+    )
+
+    market_ma50 = market_close.rolling(50).mean()
+    market_ma200 = market_close.rolling(200).mean()
+
+    market_features["market_trend"] = (
+        market_ma50 / market_ma200
+    )
+
+    frame = frame.join(
+        market_features,
+        how="left",
+    )
+
+    frame["relative_return_5d"] = (
+        frame["return_5d"]
+        - frame["market_return_5d"]
+    )
+
+    return frame
 
 
-def rolling_beta(
-    stock_returns,
-    market_returns,
-    window=60,
+def create_features(
+    stock_df: pd.DataFrame,
+    market_df: pd.DataFrame | None = None,
+    horizon: int = 5,
 ):
+    """
+    Returns:
 
-    covariance = (
-        stock_returns
-        .rolling(window)
-        .cov(market_returns)
-    )
+        training_df
+        latest_df
+        feature_columns
 
-    variance = (
-        market_returns
-        .rolling(window)
-        .var()
-    )
+    The latest row is allowed to have no future target because
+    it is the row used for today's prediction.
+    """
 
-    return covariance / variance.replace(
-        0,
-        np.nan,
-    )
-
-
-def build_feature_frame(
-    stock_df,
-    market_df=None,
-):
+    if stock_df is None or stock_df.empty:
+        raise ValueError("No stock data available.")
 
     df = stock_df.copy()
 
-    close = df["Close"]
-    high = df["High"]
-    low = df["Low"]
-    open_price = df["Open"]
-    volume = df["Volume"]
+    required = [
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+    ]
 
-    returns = close.pct_change()
+    missing = [
+        col for col in required
+        if col not in df.columns
+    ]
 
-    # -------------------------
-    # Returns
-    # -------------------------
-
-    for period in [
-        1,
-        2,
-        3,
-        5,
-        10,
-        20,
-        30,
-        60,
-    ]:
-
-        df[
-            f"return_{period}d"
-        ] = close.pct_change(period)
-
-    # -------------------------
-    # Momentum
-    # -------------------------
-
-    for period in [
-        5,
-        10,
-        20,
-        30,
-        60,
-    ]:
-
-        df[
-            f"momentum_{period}d"
-        ] = (
-            close
-            / close.shift(period)
-            - 1
+    if missing:
+        raise ValueError(
+            f"Missing market columns: {', '.join(missing)}"
         )
 
-    df["roc_10"] = close.pct_change(10)
-    df["roc_20"] = close.pct_change(20)
+    for column in required:
+        df[column] = pd.to_numeric(
+            df[column],
+            errors="coerce",
+        )
 
-    # -------------------------
-    # Moving averages
-    # -------------------------
+    df = df.sort_index()
 
-    for period in [
-        10,
-        20,
-        50,
-        100,
-        200,
-    ]:
+    close = df["close"]
+    volume = df["volume"]
 
-        ma = close.rolling(
-            period
-        ).mean()
+    # Returns.
+    for period in [1, 2, 3, 5, 10, 20, 60]:
+        df[f"return_{period}d"] = close.pct_change(period)
 
-        df[
-            f"ma{period}"
-        ] = ma
+    # Momentum.
+    for period in [5, 10, 20, 60]:
+        df[f"momentum_{period}"] = (
+            close / close.shift(period) - 1
+        )
 
-        df[
-            f"price_ma{period}"
-        ] = close / ma
+    # Moving-average structure.
+    for period in [10, 20, 50, 100, 200]:
+        ma = close.rolling(period).mean()
+        df[f"price_ma{period}"] = close / ma
 
     df["ma10_ma20"] = (
-        df["ma10"]
-        / df["ma20"]
+        close.rolling(10).mean()
+        / close.rolling(20).mean()
     )
 
     df["ma20_ma50"] = (
-        df["ma20"]
-        / df["ma50"]
+        close.rolling(20).mean()
+        / close.rolling(50).mean()
     )
 
     df["ma50_ma100"] = (
-        df["ma50"]
-        / df["ma100"]
+        close.rolling(50).mean()
+        / close.rolling(100).mean()
     )
 
     df["ma50_ma200"] = (
-        df["ma50"]
-        / df["ma200"]
+        close.rolling(50).mean()
+        / close.rolling(200).mean()
     )
 
-    # -------------------------
-    # Volatility
-    # -------------------------
+    # Volatility.
+    daily_returns = close.pct_change()
 
-    for period in [
-        5,
-        10,
-        20,
-        30,
-        60,
-    ]:
-
-        df[
-            f"volatility_{period}d"
-        ] = (
-            returns
-            .rolling(period)
-            .std()
-            * np.sqrt(252)
+    for period in [5, 10, 20, 60]:
+        df[f"volatility_{period}"] = (
+            daily_returns.rolling(period).std()
         )
 
-    # -------------------------
-    # ATR
-    # -------------------------
-
-    tr = true_range(df)
-
-    df["atr_14"] = (
-        tr.rolling(14)
-        .mean()
-    )
-
-    df["atr_pct"] = (
-        df["atr_14"] / close
-    )
-
-    # -------------------------
-    # RSI
-    # -------------------------
-
-    for period in [
-        7,
-        14,
-        21,
-    ]:
-
-        df[
-            f"rsi_{period}"
-        ] = calculate_rsi(
+    # RSI.
+    for period in [7, 14, 21]:
+        df[f"rsi_{period}"] = calculate_rsi(
             close,
             period,
         )
 
-    # -------------------------
-    # MACD
-    # -------------------------
+    # ATR.
+    df["atr_14"] = _atr(df, 14)
+    df["atr_pct"] = df["atr_14"] / close
 
+    # MACD.
     ema12 = close.ewm(
         span=12,
         adjust=False,
@@ -258,146 +226,52 @@ def build_feature_frame(
         adjust=False,
     ).mean()
 
-    df["macd"] = (
-        ema12 - ema26
+    df["macd"] = ema12 - ema26
+
+    df["macd_signal"] = df["macd"].ewm(
+        span=9,
+        adjust=False,
+    ).mean()
+
+    df["macd_histogram"] = (
+        df["macd"] - df["macd_signal"]
     )
 
-    df["macd_signal"] = (
-        df["macd"]
-        .ewm(
-            span=9,
-            adjust=False,
-        )
-        .mean()
-    )
+    # Bollinger Bands.
+    bb_mid = close.rolling(20).mean()
+    bb_std = close.rolling(20).std()
 
-    df["macd_hist"] = (
-        df["macd"]
-        - df["macd_signal"]
-    )
-
-    # -------------------------
-    # Bollinger Bands
-    # -------------------------
-
-    bb_mid = (
-        close
-        .rolling(20)
-        .mean()
-    )
-
-    bb_std = (
-        close
-        .rolling(20)
-        .std()
-    )
-
-    bb_upper = (
-        bb_mid
-        + 2 * bb_std
-    )
-
-    bb_lower = (
-        bb_mid
-        - 2 * bb_std
-    )
-
-    band_width = (
-        bb_upper - bb_lower
-    ).replace(
-        0,
-        np.nan,
-    )
+    bb_upper = bb_mid + 2 * bb_std
+    bb_lower = bb_mid - 2 * bb_std
 
     df["bb_width"] = (
-        band_width / bb_mid
+        (bb_upper - bb_lower)
+        / bb_mid
     )
 
     df["bb_position"] = (
         (close - bb_lower)
-        / band_width
+        / (bb_upper - bb_lower)
     )
 
-    # -------------------------
-    # Stochastic
-    # -------------------------
-
-    lowest = (
-        low
-        .rolling(14)
-        .min()
-    )
-
-    highest = (
-        high
-        .rolling(14)
-        .max()
-    )
-
-    denominator = (
-        highest - lowest
-    ).replace(
-        0,
-        np.nan,
-    )
-
-    df["stoch_k"] = (
-        100
-        * (close - lowest)
-        / denominator
-    )
-
-    df["stoch_d"] = (
-        df["stoch_k"]
-        .rolling(3)
-        .mean()
-    )
-
-    # -------------------------
-    # Candle structure
-    # -------------------------
-
+    # Price range.
     df["range_pct"] = (
-        high - low
-    ) / close
-
-    df["body_pct"] = (
-        close - open_price
-    ) / open_price
-
-    df["close_location"] = (
-        close - low
-    ) / (
-        high - low
-    ).replace(
-        0,
-        np.nan,
+        (df["high"] - df["low"])
+        / close
     )
 
     df["gap_pct"] = (
-        open_price
-        / close.shift(1)
-        - 1
+        df["open"] / close.shift(1) - 1
     )
 
-    # -------------------------
-    # Volume
-    # -------------------------
-
-    volume_ma20 = (
-        volume
-        .rolling(20)
-        .mean()
-    )
+    # Volume.
+    volume_ma20 = volume.rolling(20).mean()
 
     df["volume_ratio"] = (
-        volume
-        / volume_ma20
+        volume / volume_ma20
     )
 
-    df["volume_change"] = (
-        volume.pct_change()
-    )
+    df["volume_change"] = volume.pct_change()
 
     df["volume_volatility"] = (
         volume.pct_change()
@@ -406,251 +280,93 @@ def build_feature_frame(
     )
 
     df["price_volume_corr"] = (
-        returns
+        close.pct_change()
         .rolling(20)
-        .corr(
-            volume.pct_change()
-        )
+        .corr(volume.pct_change())
     )
 
-    # -------------------------
-    # OBV
-    # -------------------------
+    # Drawdown.
+    rolling_high = close.rolling(252).max()
 
-    sign = np.sign(
-        close.diff()
-    ).fillna(0)
-
-    df["obv"] = (
-        sign * volume
-    ).cumsum()
-
-    df["obv_change_20"] = (
-        df["obv"]
-        / df["obv"].shift(20)
-        - 1
+    df["drawdown_1y"] = (
+        close / rolling_high - 1
     )
 
-    # -------------------------
-    # Long-term context
-    # -------------------------
+    rolling_low = close.rolling(252).min()
 
-    high_252 = (
-        close
-        .rolling(252)
-        .max()
+    df["distance_1y_low"] = (
+        close / rolling_low - 1
     )
 
-    low_252 = (
-        close
-        .rolling(252)
-        .min()
-    )
-
-    df["drawdown_252"] = (
-        close / high_252 - 1
-    )
-
-    df["distance_52w_high"] = (
-        close / high_252 - 1
-    )
-
-    df["distance_52w_low"] = (
-        close / low_252 - 1
-    )
-
-    # -------------------------
-    # Market-relative features
-    # -------------------------
-
-    if (
-        market_df is not None
-        and not market_df.empty
-    ):
-
-        market = market_df[
-            ["Close"]
-        ].copy()
-
-        market.columns = [
-            "MarketClose"
-        ]
-
-        combined = df[
-            ["Close"]
-        ].join(
-            market,
-            how="inner",
-        )
-
-        stock_ret = (
-            combined["Close"]
-            .pct_change()
-        )
-
-        market_ret = (
-            combined["MarketClose"]
-            .pct_change()
-        )
-
-        for period in [
-            1,
-            5,
-            20,
-            60,
-        ]:
-
-            df[
-                f"market_return_{period}d"
-            ] = (
-                market_ret
-                .rolling(period)
-                .sum()
-            )
-
-        df["relative_return_5d"] = (
-            stock_ret
-            .rolling(5)
-            .sum()
-            - market_ret
-            .rolling(5)
-            .sum()
-        )
-
-        df["relative_return_20d"] = (
-            stock_ret
-            .rolling(20)
-            .sum()
-            - market_ret
-            .rolling(20)
-            .sum()
-        )
-
-        df["market_volatility_20d"] = (
-            market_ret
-            .rolling(20)
-            .std()
-            * np.sqrt(252)
-        )
-
-        market_ma50 = (
-            combined["MarketClose"]
-            .rolling(50)
-            .mean()
-        )
-
-        df["market_trend"] = (
-            combined["MarketClose"]
-            / market_ma50
-        )
-
-        df["beta_60"] = rolling_beta(
-            stock_ret,
-            market_ret,
-            60,
-        )
-
-    else:
-
-        for column in [
-            "market_return_1d",
-            "market_return_5d",
-            "market_return_20d",
-            "market_return_60d",
-            "relative_return_5d",
-            "relative_return_20d",
-            "market_volatility_20d",
-            "market_trend",
-            "beta_60",
-        ]:
-
-            df[column] = 0.0
-
-    return df
-
-
-def classify_return(value):
-
-    if pd.isna(value):
-        return np.nan
-
-    if value >= 0.02:
-        return 4
-
-    if value >= 0.005:
-        return 3
-
-    if value > -0.005:
-        return 2
-
-    if value > -0.02:
-        return 1
-
-    return 0
-
-
-def create_features(
-    stock_df,
-    market_df=None,
-    horizon=5,
-):
-
-    df = build_feature_frame(
-        stock_df,
+    # Add market context.
+    df = _add_market_features(
+        df,
         market_df,
     )
 
+    # Future target.
     df["future_return"] = (
-        df["Close"].shift(-horizon)
-        / df["Close"]
+        close.shift(-horizon)
+        / close
         - 1
     )
 
-    df["target"] = (
-        df["future_return"]
-        .apply(classify_return)
-    )
+    # Five classes:
+    #
+    # 0 = Strong Bearish
+    # 1 = Bearish
+    # 2 = Neutral
+    # 3 = Bullish
+    # 4 = Strong Bullish
 
-    ignored = {
-        "Open",
-        "High",
-        "Low",
-        "Close",
-        "Volume",
-        "ma10",
-        "ma20",
-        "ma50",
-        "ma100",
-        "ma200",
-        "future_return",
-        "target",
-    }
+    future = df["future_return"]
+
+    df["target"] = np.select(
+        [
+            future <= -0.02,
+            future <= -0.005,
+            future < 0.005,
+            future < 0.02,
+        ],
+        [
+            0,
+            1,
+            2,
+            3,
+        ],
+        default=4,
+    ).astype(float)
 
     feature_columns = [
         column
         for column in df.columns
-        if column not in ignored
-    ]
-
-    df[feature_columns] = (
-        df[feature_columns]
-        .replace(
-            [np.inf, -np.inf],
-            np.nan,
-        )
-    )
-
-    training_df = df.dropna(
-        subset=feature_columns
-        + [
+        if column not in {
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
             "future_return",
             "target",
-        ]
+        }
+    ]
+
+    # Replace infinite values.
+    df[feature_columns] = (
+        df[feature_columns]
+        .replace([np.inf, -np.inf], np.nan)
+    )
+
+    # Training rows require a known future return.
+    training_df = df.dropna(
+        subset=feature_columns
+        + ["future_return", "target"]
     ).copy()
 
+    # Latest prediction row only needs valid features.
     latest_df = df.dropna(
         subset=feature_columns
-    ).copy()
+    ).tail(1).copy()
 
     return (
         training_df,

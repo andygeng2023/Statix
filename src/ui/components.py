@@ -1,167 +1,168 @@
+from __future__ import annotations
+
+import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
 
 
-def format_money(value):
+def inject_css() -> None:
+    st.markdown(
+        """
+        <style>
+        .stock-card {
+            border: 1px solid rgba(128,128,128,.18);
+            border-radius: 16px;
+            padding: 1rem;
+            margin-bottom: .8rem;
+            background: rgba(128,128,128,.035);
+        }
 
-    if value is None:
-        return "—"
+        .stock-card-title {
+            font-size: 1.1rem;
+            font-weight: 800;
+        }
 
-    return f"${float(value):,.2f}"
+        .stock-card-muted {
+            color: #888;
+            font-size: .78rem;
+        }
 
+        .signal {
+            display: inline-block;
+            padding: .22rem .55rem;
+            border-radius: 999px;
+            font-size: .75rem;
+            font-weight: 700;
+            border: 1px solid rgba(128,128,128,.2);
+        }
 
-def format_percent(value):
+        .page-title {
+            font-size: 2.15rem;
+            font-weight: 850;
+            letter-spacing: -.045em;
+            margin-bottom: .15rem;
+        }
 
-    if value is None:
-        return "—"
-
-    return f"{float(value) * 100:+.2f}%"
-
-
-def format_probability(value):
-
-    if value is None:
-        return "—"
-
-    return f"{float(value) * 100:.1f}%"
-
-
-def metric_grid(items):
-
-    columns = st.columns(
-        len(items)
+        .page-subtitle {
+            color: #888;
+            margin-bottom: 1.4rem;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
     )
 
-    for column, item in zip(
-        columns,
-        items,
-    ):
 
-        with column:
+def format_money(value) -> str:
+    if value is None:
+        return "—"
 
-            st.markdown(
-                f"""
-                <div class="metric-card">
-                    <div class="metric-label">
-                        {item["label"]}
-                    </div>
-                    <div class="metric-value">
-                        {item["value"]}
-                    </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+    try:
+        return f"${float(value):,.2f}"
+    except Exception:
+        return "—"
 
 
-def mini_chart(df):
+def format_percent(value, digits: int = 2) -> str:
+    if value is None:
+        return "—"
 
-    if df is None or df.empty:
+    try:
+        return f"{float(value):+.{digits}f}%"
+    except Exception:
+        return "—"
 
-        st.caption(
-            "Chart unavailable"
+
+def format_probability(value) -> str:
+    if value is None:
+        return "—"
+
+    try:
+        value = float(value)
+
+        if value <= 1:
+            value *= 100
+
+        return f"{value:.1f}%"
+    except Exception:
+        return "—"
+
+
+def format_confidence(value) -> str:
+    if value is None:
+        return "—"
+
+    try:
+        value = float(value)
+
+        if value <= 1:
+            value *= 100
+
+        return f"{value:.0f}%"
+    except Exception:
+        return "—"
+
+
+def mini_chart(data: pd.DataFrame) -> None:
+    if data is None or data.empty or "close" not in data.columns:
+        return
+
+    chart_data = data["close"].dropna().tail(90)
+
+    if chart_data.empty:
+        return
+
+    fig = go.Figure()
+
+    fig.add_trace(
+        go.Scatter(
+            x=chart_data.index,
+            y=chart_data.values,
+            mode="lines",
+            line=dict(width=2),
+            hovertemplate="$%{y:.2f}<extra></extra>",
+        )
+    )
+
+    fig.update_layout(
+        height=115,
+        margin=dict(l=0, r=0, t=5, b=5),
+        showlegend=False,
+        xaxis=dict(
+            visible=False,
+            fixedrange=True,
+        ),
+        yaxis=dict(
+            visible=False,
+            fixedrange=True,
+        ),
+        hovermode="x unified",
+    )
+
+    st.plotly_chart(
+        fig,
+        use_container_width=True,
+        config={
+            "displayModeBar": False,
+        },
+    )
+
+
+def page_header(title: str, subtitle: str = "") -> None:
+    st.markdown(
+        f'<div class="page-title">{title}</div>',
+        unsafe_allow_html=True,
+    )
+
+    if subtitle:
+        st.markdown(
+            f'<div class="page-subtitle">{subtitle}</div>',
+            unsafe_allow_html=True,
         )
 
-        return
 
-    chart = df[
-        ["Close"]
-    ].tail(90).copy()
-
-    chart.columns = [
-        "Price"
-    ]
-
-    st.line_chart(
-        chart,
-        height=120,
-        use_container_width=True,
-    )
-
-
-def prediction_card(
-    prediction
-):
-
-    direction = prediction.get(
-        "direction",
-        "Neutral",
-    )
-
+def signal_badge(signal: str) -> None:
     st.markdown(
-        '<div class="signal-card">',
+        f'<span class="signal">{signal}</span>',
         unsafe_allow_html=True,
-    )
-
-    st.markdown(
-        f"### {direction}"
-    )
-
-    st.caption(
-        "Model outlook: next 5 market sessions"
-    )
-
-    metric_grid(
-        [
-            {
-                "label": "Probability Up",
-                "value": format_probability(
-                    prediction.get(
-                        "probability_up"
-                    )
-                ),
-            },
-            {
-                "label": "Expected Return",
-                "value": format_percent(
-                    prediction.get(
-                        "expected_return"
-                    )
-                ),
-            },
-            {
-                "label": "Confidence",
-                "value": format_probability(
-                    prediction.get(
-                        "confidence"
-                    )
-                ),
-            },
-            {
-                "label": "Agreement",
-                "value": format_probability(
-                    prediction.get(
-                        "agreement"
-                    )
-                ),
-            },
-        ]
-    )
-
-    st.markdown(
-        "</div>",
-        unsafe_allow_html=True,
-    )
-
-
-def display_class_probabilities(
-    prediction
-):
-
-    probabilities = prediction.get(
-        "class_probabilities",
-        {},
-    )
-
-    if not probabilities:
-        return
-
-    st.bar_chart(
-        {
-            key: [
-                value * 100
-                for value in probabilities.values()
-            ]
-            for key in probabilities.keys()
-        },
-        height=280,
     )

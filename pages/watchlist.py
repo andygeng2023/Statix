@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import streamlit as st
 
 from src.data.market import (
@@ -10,59 +12,42 @@ from src.storage.database import (
     remove_from_watchlist,
 )
 from src.ui.components import (
+    format_confidence,
     format_money,
     format_percent,
     format_probability,
+    inject_css,
     mini_chart,
+    page_header,
 )
 
 
-st.title("Watchlist")
+inject_css()
 
-st.caption(
-    "Compact view of your saved securities."
+
+def open_stock(ticker: str) -> None:
+    st.session_state["selected_ticker"] = ticker
+    st.switch_page("pages/prediction.py")
+
+
+page_header(
+    "Watchlist",
+    "Compact market cards with price, prediction, confidence, and trend.",
 )
-
-
-top1, top2 = st.columns(
-    [4, 1]
-)
-
-with top1:
-
-    st.write(
-        "Quotes refresh frequently. "
-        "Historical charts are cached."
-    )
-
-with top2:
-
-    if st.button(
-        "Refresh",
-        use_container_width=True,
-    ):
-
-        st.cache_data.clear()
-        st.rerun()
 
 
 watchlist = get_watchlist()
 
-
 if not watchlist:
-
     st.info(
-        "Your watchlist is empty."
+        "Your watchlist is empty. Search for a stock and add it."
     )
 
     if st.button(
         "Search stocks",
         use_container_width=True,
     ):
-
-        st.switch_page(
-            "pages/search.py"
-        )
+        st.switch_page("pages/search.py")
 
     st.stop()
 
@@ -77,185 +62,169 @@ prediction_lookup = {
 }
 
 
-for start in range(
+for row_start in range(
     0,
     len(watchlist),
     2,
 ):
-
     row = watchlist[
-        start:start + 2
+        row_start:row_start + 2
     ]
 
-    cols = st.columns(2)
+    columns = st.columns(2)
 
-    for col, ticker in zip(
-        cols,
+    for column, ticker in zip(
+        columns,
         row,
     ):
+        with column:
 
-        with col:
+            quote = get_quote(ticker)
 
-            quote = get_quote(
+            price = quote.get(
+                "price"
+            )
+
+            change_pct = quote.get(
+                "change_pct"
+            )
+
+            saved = prediction_lookup.get(
                 ticker
             )
 
-            prediction = (
-                prediction_lookup.get(
-                    ticker
-                )
-            )
-
-            st.markdown(
-                f"## {ticker}"
-            )
-
-            left, right = st.columns(
-                [1.4, 1]
-            )
-
-            with left:
-
-                st.markdown(
-                    f"### {format_money(quote.get('price'))}"
+            with st.container(
+                border=True
+            ):
+                top_left, top_right = st.columns(
+                    [2, 1]
                 )
 
-                st.caption(
-                    "Today: "
-                    + format_percent(
-                        quote.get(
-                            "change_pct"
-                        )
-                    )
-                )
-
-            with right:
-
-                if prediction:
-
+                with top_left:
                     st.markdown(
-                        f"**{prediction.get('direction', 'Neutral')}**"
+                        f"### {ticker}"
                     )
 
                     st.caption(
-                        "Saved model signal"
+                        "Market data"
                     )
 
-                else:
+                with top_right:
+                    if st.button(
+                        "Analyze",
+                        key=f"analyze_{ticker}",
+                        use_container_width=True,
+                    ):
+                        open_stock(ticker)
 
-                    st.caption(
-                        "No saved analysis"
-                    )
+                price_cols = st.columns(3)
 
-            chart = get_stock_data(
-                ticker,
-                period="6mo",
-            )
-
-            mini_chart(
-                chart
-            )
-
-            if prediction:
-
-                c1, c2, c3, c4 = st.columns(
-                    4
-                )
-
-                with c1:
-
-                    st.caption("UP")
-
+                with price_cols[0]:
+                    st.caption("Price")
                     st.write(
-                        format_probability(
-                            prediction.get(
-                                "probability_up"
-                            )
-                        )
+                        format_money(price)
                     )
 
-                with c2:
-
-                    st.caption("5D")
-
+                with price_cols[1]:
+                    st.caption("Daily")
                     st.write(
                         format_percent(
-                            prediction.get(
-                                "expected_return"
-                            )
+                            change_pct
                         )
                     )
 
-                with c3:
-
-                    st.caption("CONF.")
-
+                with price_cols[2]:
+                    st.caption("Signal")
                     st.write(
-                        format_probability(
-                            prediction.get(
-                                "confidence"
-                            )
-                        )
+                        saved["direction"]
+                        if saved
+                        else "—"
                     )
 
-                with c4:
-
-                    st.caption("ACC.")
-
-                    st.write(
-                        format_probability(
-                            prediction.get(
-                                "accuracy"
-                            )
-                        )
-                    )
-
-                st.caption(
-                    "Analysis: "
-                    + str(
-                        prediction.get(
-                            "market_date",
-                            "—",
-                        )
-                    )
+                chart = get_stock_data(
+                    ticker,
+                    period="6mo",
+                    interval="1d",
                 )
 
-            else:
+                mini_chart(chart)
 
-                st.caption(
-                    "No model analysis saved yet."
-                )
+                if saved:
+                    metric_cols = st.columns(4)
 
-            a, b = st.columns(2)
+                    with metric_cols[0]:
+                        st.caption("Up")
+                        st.write(
+                            format_probability(
+                                saved[
+                                    "probability_up"
+                                ]
+                            )
+                        )
 
-            with a:
+                    with metric_cols[1]:
+                        st.caption("5D return")
+                        st.write(
+                            format_percent(
+                                (
+                                    saved[
+                                        "expected_return"
+                                    ] * 100
+                                    if saved[
+                                        "expected_return"
+                                    ] is not None
+                                    else None
+                                )
+                            )
+                        )
 
-                if st.button(
-                    "Analyze",
-                    key=f"analyze_watch_{ticker}",
-                    use_container_width=True,
-                ):
+                    with metric_cols[2]:
+                        st.caption("Confidence")
+                        st.write(
+                            format_confidence(
+                                saved[
+                                    "confidence"
+                                ]
+                            )
+                        )
 
-                    st.session_state[
-                        "selected_ticker"
-                    ] = ticker
+                    with metric_cols[3]:
+                        st.caption("Accuracy")
+                        st.write(
+                            format_percent(
+                                (
+                                    saved[
+                                        "test_accuracy"
+                                    ] * 100
+                                    if saved[
+                                        "test_accuracy"
+                                    ] is not None
+                                    else None
+                                )
+                            )
+                        )
 
-                    st.switch_page(
-                        "pages/prediction.py"
+                    if saved["market_date"]:
+                        st.caption(
+                            "Analysis date: "
+                            + str(
+                                saved[
+                                    "market_date"
+                                ]
+                            )
+                        )
+                else:
+                    st.caption(
+                        "No saved prediction yet. "
+                        "Open Analyze to generate one."
                     )
-
-            with b:
 
                 if st.button(
                     "Remove",
-                    key=f"remove_watch_{ticker}",
+                    key=f"remove_{ticker}",
                     use_container_width=True,
                 ):
-
                     remove_from_watchlist(
                         ticker
                     )
-
                     st.rerun()
-
-            st.divider()

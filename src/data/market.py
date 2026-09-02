@@ -1,162 +1,199 @@
+from __future__ import annotations
+
+import time
+from typing import Any
+
+import pandas as pd
+import yfinance as yf
 import streamlit as st
 
-from src.storage.database import init_db
+
+DEFAULT_PERIOD = "5y"
 
 
-st.set_page_config(
-    page_title="Statix",
-    page_icon="📈",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
+def _clean_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Normalize yfinance columns into normal OHLCV columns."""
 
-init_db()
+    if df is None or df.empty:
+        return pd.DataFrame()
+
+    result = df.copy()
+
+    if isinstance(result.columns, pd.MultiIndex):
+        result.columns = result.columns.get_level_values(0)
+
+    result.columns = [str(col).strip().lower() for col in result.columns]
+
+    rename_map = {
+        "adj close": "adj_close",
+    }
+
+    result = result.rename(columns=rename_map)
+
+    required = ["open", "high", "low", "close", "volume"]
+
+    for column in required:
+        if column not in result.columns:
+            return pd.DataFrame()
+
+    result = result[required].copy()
+
+    for column in required:
+        result[column] = pd.to_numeric(
+            result[column],
+            errors="coerce",
+        )
+
+    result = result.dropna(subset=["open", "high", "low", "close"])
+    result = result.sort_index()
+    result = result[~result.index.duplicated(keep="last")]
+
+    return result
 
 
-st.markdown(
+@st.cache_data(ttl=300, show_spinner=False)
+def get_stock_data(
+    ticker: str,
+    period: str = DEFAULT_PERIOD,
+    interval: str = "1d",
+) -> pd.DataFrame:
     """
-    <style>
-    #MainMenu {visibility:hidden;}
-    footer {visibility:hidden;}
+    Historical market data.
 
-    .block-container {
-        max-width: 1500px;
-        padding-top: 1.2rem;
-        padding-bottom: 3rem;
+    This is intentionally separate from quote data so refreshing
+    a live quote never retrains a prediction model.
+    """
+
+    ticker = ticker.strip().upper()
+
+    if not ticker:
+        return pd.DataFrame()
+
+    try:
+        data = yf.download(
+            ticker,
+            period=period,
+            interval=interval,
+            auto_adjust=True,
+            progress=False,
+            threads=False,
+        )
+    except Exception:
+        return pd.DataFrame()
+
+    return _clean_columns(data)
+
+
+def _safe_float(value: Any) -> float | None:
+    try:
+        if value is None:
+            return None
+
+        value = float(value)
+
+        if pd.isna(value):
+            return None
+
+        return value
+    except Exception:
+        return None
+
+
+@st.cache_data(ttl=20, show_spinner=False)
+def get_quote(ticker: str) -> dict[str, Any]:
+    """
+    Fast quote layer.
+
+    Cached briefly so the UI can refresh without repeatedly
+    downloading five years of historical data.
+    """
+
+    ticker = ticker.strip().upper()
+
+    result: dict[str, Any] = {
+        "ticker": ticker,
+        "price": None,
+        "previous_close": None,
+        "change": None,
+        "change_pct": None,
+        "volume": None,
+        "market_state": "Unknown",
+        "updated_at": time.time(),
+        "source": "Yahoo Finance",
     }
 
-    [data-testid="stSidebar"] {
-        border-right: 1px solid rgba(128,128,128,.15);
-    }
+    if not ticker:
+        return result
 
-    .statix-logo {
-        font-size: 30px;
-        font-weight: 850;
-        letter-spacing: -1.5px;
-    }
+    try:
+        instrument = yf.Ticker(ticker)
+        info = instrument.fast_info
 
-    .muted {
-        color: rgba(128,128,128,.85);
-        font-size: 13px;
-    }
+        price = _safe_float(info.get("last_price"))
+        previous = _safe_float(info.get("previous_close"))
 
-    .hero {
-        padding: 28px;
-        border-radius: 20px;
-        border: 1px solid rgba(128,128,128,.16);
-        background: linear-gradient(
-            135deg,
-            rgba(128,128,128,.08),
-            rgba(128,128,128,.025)
-        );
-        margin-bottom: 20px;
-    }
+        if price is not None:
+            result["price"] = price
 
-    .hero-title {
-        font-size: 42px;
-        font-weight: 850;
-        letter-spacing: -2px;
-        margin-bottom: 5px;
-    }
+        if previous is not None:
+            result["previous_close"] = previous
 
-    .hero-subtitle {
-        font-size: 16px;
-        color: rgba(128,128,128,.9);
-    }
+        if price is not None and previous not in (None, 0):
+            change = price - previous
+            result["change"] = change
+            result["change_pct"] = (change / previous) * 100
 
-    .section-title {
-        font-size: 23px;
-        font-weight: 750;
-        letter-spacing: -.5px;
-    }
+        volume = _safe_float(info.get("last_volume"))
 
-    .stock-card {
-        border: 1px solid rgba(128,128,128,.16);
-        border-radius: 16px;
-        padding: 17px;
-        background: rgba(128,128,128,.025);
-        min-height: 165px;
-    }
+        if volume is not None:
+            result["volume"] = volume
 
-    .signal-card {
-        border: 1px solid rgba(128,128,128,.18);
-        border-radius: 18px;
-        padding: 22px;
-        background: rgba(128,128,128,.035);
-    }
+    except Exception:
+        pass
 
-    .metric-card {
-        border: 1px solid rgba(128,128,128,.15);
-        border-radius: 13px;
-        padding: 13px;
-        background: rgba(128,128,128,.025);
-    }
+    # Reliable fallback from recent historical data.
+    if result["price"] is None:
+        try:
+            recent = get_stock_data(
+                ticker,
+                period="5d",
+                interval="1d",
+            )
 
-    .metric-label {
-        color: rgba(128,128,128,.8);
-        font-size: 11px;
-        text-transform: uppercase;
-        letter-spacing: .6px;
-    }
+            if not recent.empty:
+                close = recent["close"].dropna()
 
-    .metric-value {
-        font-size: 19px;
-        font-weight: 750;
-        margin-top: 3px;
-    }
+                if len(close) >= 1:
+                    result["price"] = float(close.iloc[-1])
 
-    .ticker-title {
-        font-size: 34px;
-        font-weight: 850;
-        letter-spacing: -1.5px;
-    }
+                if len(close) >= 2:
+                    previous = float(close.iloc[-2])
+                    price = float(close.iloc[-1])
 
-    div[data-testid="stMetric"] {
-        border: 1px solid rgba(128,128,128,.13);
-        border-radius: 12px;
-        padding: 10px;
-        background: rgba(128,128,128,.02);
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+                    result["previous_close"] = previous
+                    result["change"] = price - previous
+
+                    if previous != 0:
+                        result["change_pct"] = (
+                            (price - previous) / previous
+                        ) * 100
+
+                if "volume" in recent.columns:
+                    volume = recent["volume"].dropna()
+
+                    if not volume.empty:
+                        result["volume"] = float(volume.iloc[-1])
+
+        except Exception:
+            pass
+
+    result["updated_at"] = time.time()
+
+    return result
 
 
-pages = {
-    "Statix": [
-        st.Page("pages/home.py", title="Home", icon="🏠"),
-        st.Page("pages/search.py", title="Search", icon="🔎"),
-        st.Page("pages/watchlist.py", title="Watchlist", icon="⭐"),
-        st.Page("pages/prediction.py", title="Prediction", icon="📊"),
-    ]
-}
+def clear_market_cache() -> None:
+    """Clear market-data caches."""
 
-
-pg = st.navigation(pages)
-
-
-with st.sidebar:
-
-    st.markdown(
-        '<div class="statix-logo">Statix</div>',
-        unsafe_allow_html=True,
-    )
-
-    st.caption(
-        "Market intelligence dashboard"
-    )
-
-    st.divider()
-
-    st.markdown("**V6.1 Ensemble**")
-    st.caption("Technical + market-relative features")
-
-    st.divider()
-
-    st.caption(
-        "Market data may be delayed. Model outputs are estimates, not financial advice."
-    )
-
-
-pg.run()
+    get_stock_data.clear()
+    get_quote.clear()

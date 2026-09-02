@@ -1,8 +1,8 @@
-streamlit>=1.40
-yfinance>=0.2.40
-pandas>=2.0
-numpy>=1.24
-scikit-learn>=1.8
-plotly>=5.18
-sqlalchemy>=2.0
-requests>=2.31
+streamlit>=1.40,<2
+yfinance>=0.2.54
+pandas>=2.2,<3
+numpy>=1.26,<3
+scikit-learn>=1.8,<1.10
+plotly>=5.24
+SQLAlchemy>=2.0
+requests>=2.32

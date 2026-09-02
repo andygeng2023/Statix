@@ -1,138 +1,106 @@
+from __future__ import annotations
+
 import streamlit as st
 
-from src.data.market import (
-    get_quote,
-    get_stock_data,
-    format_volume,
-)
+from src.data.market import get_quote, get_stock_data
 from src.storage.database import (
     get_recently_viewed,
     get_watchlist,
 )
 from src.ui.components import (
+    format_confidence,
     format_money,
     format_percent,
     format_probability,
+    inject_css,
     mini_chart,
+    page_header,
 )
 
 
+inject_css()
+
+
+def select_stock(ticker: str) -> None:
+    st.session_state["selected_ticker"] = ticker
+    st.switch_page("pages/prediction.py")
+
+
+page_header(
+    "Statix",
+    "Market data, model predictions, and historical context in one dashboard.",
+)
+
+
+# ---------------------------------------------------------
+# Quick actions
+# ---------------------------------------------------------
+
+col1, col2, col3 = st.columns([1, 1, 2])
+
+with col1:
+    if st.button(
+        "Search stocks",
+        use_container_width=True,
+    ):
+        st.switch_page("pages/search.py")
+
+with col2:
+    if st.button(
+        "Open watchlist",
+        use_container_width=True,
+    ):
+        st.switch_page("pages/watchlist.py")
+
+
+# ---------------------------------------------------------
+# Market pulse
+# ---------------------------------------------------------
+
 st.markdown(
-    """
-    <div class="hero">
-        <div class="hero-title">Statix</div>
-        <div class="hero-subtitle">
-            Market intelligence, predictions, and historical context in one dashboard.
-        </div>
-    </div>
-    """,
+    '<div class="section-title">Market pulse</div>',
     unsafe_allow_html=True,
 )
 
-
-# =========================================================
-# QUICK ACTIONS
-# =========================================================
-
-c1, c2, c3 = st.columns(3)
-
-with c1:
-
-    if st.button(
-        "🔎 Search a stock",
-        use_container_width=True,
-    ):
-
-        st.switch_page(
-            "pages/search.py"
-        )
-
-
-with c2:
-
-    if st.button(
-        "⭐ Open watchlist",
-        use_container_width=True,
-    ):
-
-        st.switch_page(
-            "pages/watchlist.py"
-        )
-
-
-with c3:
-
-    if st.button(
-        "📊 Analyze SPY",
-        use_container_width=True,
-    ):
-
-        st.session_state[
-            "selected_ticker"
-        ] = "SPY"
-
-        st.switch_page(
-            "pages/prediction.py"
-        )
-
-
-st.divider()
-
-
-# =========================================================
-# MARKET SNAPSHOT
-# =========================================================
-
-st.markdown(
-    '<div class="section-title">Market snapshot</div>',
-    unsafe_allow_html=True,
-)
-
-market_symbols = [
-    "SPY",
-    "QQQ",
-    "DIA",
-    "IWM",
+pulse_symbols = [
+    ("SPY", "S&P 500"),
+    ("QQQ", "Nasdaq 100"),
+    ("DIA", "Dow Jones"),
 ]
 
+pulse_cols = st.columns(3)
 
-cols = st.columns(4)
-
-for col, ticker in zip(
-    cols,
-    market_symbols,
+for column, (ticker, label) in zip(
+    pulse_cols,
+    pulse_symbols,
 ):
+    with column:
+        quote = get_quote(ticker)
 
-    quote = get_quote(ticker)
-
-    with col:
+        price = quote.get("price")
+        change_pct = quote.get("change_pct")
 
         st.metric(
-            ticker,
-            format_money(
-                quote.get("price")
-            ),
-            format_percent(
-                quote.get(
-                    "change_pct"
-                )
+            label=f"{ticker} · {label}",
+            value=format_money(price),
+            delta=(
+                format_percent(change_pct)
+                if change_pct is not None
+                else None
             ),
         )
 
 
-st.divider()
-
-
-# =========================================================
-# FEATURED STOCKS
-# =========================================================
+# ---------------------------------------------------------
+# Discover
+# ---------------------------------------------------------
 
 st.markdown(
-    '<div class="section-title">Featured stocks</div>',
+    '<div class="section-title">Discover</div>',
     unsafe_allow_html=True,
 )
 
-featured = [
+discover = [
     "AAPL",
     "MSFT",
     "NVDA",
@@ -140,35 +108,75 @@ featured = [
     "GOOGL",
     "META",
     "TSLA",
-    "AVGO",
+    "SPY",
 ]
 
+for row_start in range(0, len(discover), 4):
+    row = discover[row_start:row_start + 4]
 
-for start in range(
-    0,
-    len(featured),
-    4,
-):
+    columns = st.columns(4)
 
-    row = featured[
-        start:start + 4
-    ]
-
-    cols = st.columns(4)
-
-    for col, ticker in zip(
-        cols,
+    for column, ticker in zip(
+        columns,
         row,
     ):
-
-        with col:
-
-            quote = get_quote(
-                ticker
-            )
+        with column:
+            quote = get_quote(ticker)
 
             st.markdown(
-                f"### {ticker}"
+                f"**{ticker}**"
+            )
+
+            st.caption(
+                format_money(
+                    quote.get("price")
+                )
+            )
+
+            change = quote.get(
+                "change_pct"
+            )
+
+            if change is not None:
+                st.caption(
+                    format_percent(change)
+                )
+
+            if st.button(
+                "Analyze",
+                key=f"home_{ticker}",
+                use_container_width=True,
+            ):
+                select_stock(ticker)
+
+
+# ---------------------------------------------------------
+# Watchlist
+# ---------------------------------------------------------
+
+watchlist = get_watchlist()
+
+if watchlist:
+    st.markdown(
+        '<div class="section-title">Your watchlist</div>',
+        unsafe_allow_html=True,
+    )
+
+    watchlist = watchlist[:4]
+
+    columns = st.columns(
+        len(watchlist)
+    )
+
+    for column, ticker in zip(
+        columns,
+        watchlist,
+    ):
+        with column:
+            quote = get_quote(ticker)
+
+            st.markdown(
+                f"**{ticker}**"
             )
 
             st.metric(
@@ -176,211 +184,99 @@ for start in range(
                 format_money(
                     quote.get("price")
                 ),
-                format_percent(
-                    quote.get(
-                        "change_pct"
+                (
+                    format_percent(
+                        quote.get("change_pct")
                     )
+                    if quote.get("change_pct")
+                    is not None
+                    else None
                 ),
             )
 
             if st.button(
-                "Analyze",
-                key=f"home_analyze_{ticker}",
+                "Open",
+                key=f"watch_{ticker}",
                 use_container_width=True,
             ):
-
-                st.session_state[
-                    "selected_ticker"
-                ] = ticker
-
-                st.switch_page(
-                    "pages/prediction.py"
-                )
+                select_stock(ticker)
 
 
-st.divider()
+# ---------------------------------------------------------
+# Recently viewed
+# ---------------------------------------------------------
 
-
-# =========================================================
-# WATCHLIST
-# =========================================================
-
-st.markdown(
-    '<div class="section-title">Watchlist</div>',
-    unsafe_allow_html=True,
+recent = get_recently_viewed(
+    limit=6
 )
 
-watchlist = get_watchlist()
-
-if not watchlist:
-
-    st.info(
-        "Your watchlist is empty. Search for a stock to add one."
+if recent:
+    st.markdown(
+        '<div class="section-title">Recently viewed</div>',
+        unsafe_allow_html=True,
     )
 
-else:
-
-    for start in range(
+    for row_start in range(
         0,
-        min(len(watchlist), 6),
+        len(recent),
         3,
     ):
-
-        row = watchlist[
-            start:start + 3
+        row = recent[
+            row_start:row_start + 3
         ]
 
-        cols = st.columns(3)
+        columns = st.columns(3)
 
-        for col, ticker in zip(
-            cols,
+        for column, item in zip(
+            columns,
             row,
         ):
-
-            with col:
-
-                quote = get_quote(
-                    ticker
-                )
+            with column:
+                ticker = item["ticker"]
 
                 st.markdown(
                     f"**{ticker}**"
                 )
 
-                st.write(
-                    format_money(
-                        quote.get(
-                            "price"
+                metrics = st.columns(2)
+
+                with metrics[0]:
+                    st.caption("Signal")
+                    st.write(
+                        item["direction"]
+                        or "—"
+                    )
+
+                with metrics[1]:
+                    st.caption("Up probability")
+                    st.write(
+                        format_probability(
+                            item["probability_up"]
                         )
                     )
-                )
 
                 st.caption(
-                    f"Today "
-                    f"{format_percent(quote.get('change_pct'))}"
-                )
-
-
-st.divider()
-
-
-# =========================================================
-# RECENTLY VIEWED
-# =========================================================
-
-recent = get_recently_viewed(
-    limit=8
-)
-
-st.markdown(
-    '<div class="section-title">Recently analyzed</div>',
-    unsafe_allow_html=True,
-)
-
-if not recent:
-
-    st.caption(
-        "Stocks you analyze will appear here."
-    )
-
-else:
-
-    for start in range(
-        0,
-        len(recent),
-        4,
-    ):
-
-        row = recent[
-            start:start + 4
-        ]
-
-        cols = st.columns(4)
-
-        for col, item in zip(
-            cols,
-            row,
-        ):
-
-            ticker = item[
-                "ticker"
-            ]
-
-            with col:
-
-                st.markdown(
-                    f"### {ticker}"
-                )
-
-                st.caption(
-                    item.get(
-                        "direction",
-                        "Neutral",
-                    )
-                )
-
-                st.write(
-                    "5D: "
-                    + format_percent(
-                        item.get(
-                            "expected_return"
-                        )
-                    )
+                    f"Expected 5D return: "
+                    f"{format_percent(item['expected_return'] * 100 if item['expected_return'] is not None else None)}"
                 )
 
                 if st.button(
-                    "Open",
-                    key=f"recent_{ticker}",
+                    "Open analysis",
+                    key=f"recent_{ticker}_{row_start}",
                     use_container_width=True,
                 ):
-
-                    st.session_state[
-                        "selected_ticker"
-                    ] = ticker
-
-                    st.switch_page(
-                        "pages/prediction.py"
-                    )
+                    select_stock(ticker)
 
 
-st.divider()
+# ---------------------------------------------------------
+# Empty-state help
+# ---------------------------------------------------------
 
+if not watchlist and not recent:
+    st.divider()
 
-# =========================================================
-# MARKET DATA STATUS
-# =========================================================
-
-st.markdown(
-    '<div class="section-title">Data status</div>',
-    unsafe_allow_html=True,
-)
-
-status_cols = st.columns(3)
-
-with status_cols[0]:
-
-    spy = get_stock_data(
-        "SPY",
-        period="5y",
-    )
-
-    st.metric(
-        "SPY history",
-        f"{len(spy):,} sessions",
-    )
-
-
-with status_cols[1]:
-
-    st.metric(
-        "Quote refresh",
-        "~15 sec",
-    )
-
-
-with status_cols[2]:
-
-    st.metric(
-        "Model",
-        "V6.1 Ensemble",
+    st.info(
+        "Start by searching for a stock or selecting one "
+        "from Discover. Your analyses will appear here "
+        "after you view them."
     )
