@@ -1,0 +1,2 @@
+# Statix
+Stock prediction model
