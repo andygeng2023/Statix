@@ -1,36 +1,93 @@
 import streamlit as st
 import plotly.graph_objects as go
 
-from src.data.market import get_stock_data
-from src.models.features import create_features
-from src.models.ensemble import train_and_predict
-from src.models.backtest import run_backtest
+from src.data.market import (
+    get_stock_data,
+)
+
+from src.models.features import (
+    create_features,
+)
+
+from src.models.ensemble import (
+    MODEL_VERSION,
+    train_and_predict,
+)
+
+from src.models.backtest import (
+    run_backtest,
+)
 
 from src.storage.database import (
     add_to_watchlist,
-    remove_from_watchlist,
+    get_cached_prediction,
     is_watched,
+    remove_from_watchlist,
+    save_prediction_history,
+    save_viewed_prediction,
+)
+
+from src.ui.components import (
+    show_prediction_metrics,
 )
 
 
 st.title("Prediction")
 
-ticker = st.session_state.get(
-    "selected_ticker",
-    "AAPL",
-)
 
-ticker = st.text_input(
-    "Ticker",
-    value=ticker,
-).upper().strip()
+# -------------------------
+# Selected ticker
+# -------------------------
+
+ticker = st.session_state.get(
+    "selected_ticker"
+)
 
 
 if not ticker:
+
+    st.info(
+        "Search for a stock first."
+    )
+
+    if st.button(
+        "Search up a stock",
+        type="primary",
+        use_container_width=True,
+    ):
+        st.switch_page(
+            "pages/search.py"
+        )
+
     st.stop()
 
 
-tab_overview, tab_prediction, tab_chart, tab_backtest = st.tabs(
+ticker = ticker.upper().strip()
+
+
+if st.button(
+    "Search up a different stock",
+):
+    st.switch_page(
+        "pages/search.py"
+    )
+
+
+st.subheader(
+    ticker
+)
+
+
+# -------------------------
+# Tabs
+# -------------------------
+
+(
+    overview_tab,
+    prediction_tab,
+    chart_tab,
+    backtest_tab,
+) = st.tabs(
     [
         "Overview",
         "Prediction",
@@ -40,63 +97,141 @@ tab_overview, tab_prediction, tab_chart, tab_backtest = st.tabs(
 )
 
 
+# -------------------------
+# Download data
+# -------------------------
+
 with st.status(
-    f"Preparing {ticker}...",
+    f"Loading {ticker}...",
     expanded=True,
 ) as status:
 
-    st.write("Downloading historical market data...")
+    st.write(
+        "Loading historical market data..."
+    )
 
     data = get_stock_data(
         ticker,
         period="2y",
     )
 
-    st.write("Downloading market context...")
-
     market = get_stock_data(
         "SPY",
         period="2y",
     )
 
-    st.write("Building technical indicators...")
-
-    features, feature_columns = create_features(
-        data,
-        market,
+    latest_market_date = (
+        data.index[-1].strftime(
+            "%Y-%m-%d"
+        )
     )
-
-    st.write(
-        "Training ensemble prediction models..."
-    )
-
-    prediction = train_and_predict(
-        features,
-        feature_columns,
-    )
-
-    status.update(
-        label=f"{ticker} analysis complete",
-        state="complete",
-        expanded=False,
-    )
-
-
-with tab_overview:
 
     latest_price = float(
         data["Close"].iloc[-1]
     )
 
+    status.update(
+        label="Market data loaded",
+        state="complete",
+        expanded=False,
+    )
+
+
+# -------------------------
+# Database cache
+# -------------------------
+
+cached_prediction = (
+    get_cached_prediction(
+        ticker=ticker,
+        market_date=latest_market_date,
+        model_version=MODEL_VERSION,
+        horizon=5,
+    )
+)
+
+
+if cached_prediction:
+
+    prediction = cached_prediction
+
+    st.caption(
+        "Loaded saved analysis. "
+        "The model did not need to be retrained."
+    )
+
+else:
+
+    with st.status(
+        f"Analyzing {ticker}...",
+        expanded=True,
+    ) as status:
+
+        st.write(
+            "Calculating technical indicators..."
+        )
+
+        features, feature_columns = (
+            create_features(
+                data,
+                market,
+                horizon=5,
+            )
+        )
+
+        st.write(
+            "Training prediction ensemble..."
+        )
+
+        prediction = train_and_predict(
+            features,
+            feature_columns,
+            horizon=5,
+        )
+
+        st.write(
+            "Saving analysis..."
+        )
+
+        save_viewed_prediction(
+            ticker=ticker,
+            market_date=latest_market_date,
+            price=latest_price,
+            prediction=prediction,
+        )
+
+        save_prediction_history(
+            ticker=ticker,
+            market_date=latest_market_date,
+            price=latest_price,
+            prediction=prediction,
+        )
+
+        status.update(
+            label="Analysis complete",
+            state="complete",
+            expanded=False,
+        )
+
+
+# -------------------------
+# Overview
+# -------------------------
+
+with overview_tab:
+
     previous_price = float(
         data["Close"].iloc[-2]
     )
 
-    change = (
-        latest_price - previous_price
+    daily_change = (
+        latest_price
+        - previous_price
     ) / previous_price
 
-    c1, c2, c3, c4 = st.columns(4)
+    c1, c2, c3, c4 = st.columns(
+        4
+    )
 
     c1.metric(
         "Price",
@@ -105,44 +240,57 @@ with tab_overview:
 
     c2.metric(
         "Daily Change",
-        f"{change * 100:+.2f}%",
+        f"{daily_change * 100:+.2f}%",
     )
 
     c3.metric(
-        "Up Probability",
-        f"{prediction['probability_up'] * 100:.1f}%",
+        "Signal",
+        prediction["direction"],
     )
 
     c4.metric(
-        "Model Accuracy",
-        f"{prediction['test_accuracy'] * 100:.1f}%",
+        "Up Probability",
+        (
+            f"{prediction['probability_up'] * 100:.1f}%"
+        ),
     )
 
     st.divider()
 
-    if prediction["direction"] == "Bullish":
+    show_prediction_metrics(
+        prediction
+    )
+
+    st.divider()
+
+    if prediction[
+        "direction"
+    ] == "Bullish":
+
         st.success(
-            "Statix currently classifies the setup as Bullish."
+            "Statix currently classifies "
+            "the historical setup as Bullish."
         )
 
-    elif prediction["direction"] == "Bearish":
+    elif prediction[
+        "direction"
+    ] == "Bearish":
+
         st.error(
-            "Statix currently classifies the setup as Bearish."
+            "Statix currently classifies "
+            "the historical setup as Bearish."
         )
 
     else:
+
         st.warning(
-            "Statix currently classifies the setup as Neutral."
+            "Statix currently classifies "
+            "the historical setup as Neutral."
         )
 
-    st.write(
-        f"Estimated 5-day return: "
-        f"**{prediction['expected_return'] * 100:+.2f}%**"
-    )
-
-    st.write(
-        f"Model confidence: "
-        f"**{prediction['confidence'] * 100:.1f}%**"
+    st.caption(
+        "This is a statistical model output, "
+        "not a guaranteed future result."
     )
 
     if is_watched(ticker):
@@ -150,7 +298,9 @@ with tab_overview:
         if st.button(
             "Remove from Watchlist"
         ):
-            remove_from_watchlist(ticker)
+            remove_from_watchlist(
+                ticker
+            )
             st.rerun()
 
     else:
@@ -158,61 +308,93 @@ with tab_overview:
         if st.button(
             "Add to Watchlist"
         ):
-            add_to_watchlist(ticker)
+            add_to_watchlist(
+                ticker
+            )
             st.rerun()
 
 
-with tab_prediction:
+# -------------------------
+# Prediction
+# -------------------------
 
-    st.subheader("Prediction")
+with prediction_tab:
 
-    probability_up = (
-        prediction["probability_up"]
+    st.subheader(
+        "Statix Prediction"
     )
 
     st.progress(
-        probability_up,
+        prediction[
+            "probability_up"
+        ],
         text=(
-            f"Probability of positive "
-            f"5-day return: "
-            f"{probability_up * 100:.1f}%"
+            "Probability of a positive "
+            "5-day return: "
+            f"{prediction['probability_up'] * 100:.1f}%"
         ),
     )
 
-    st.metric(
-        "Expected 5-Day Return",
-        f"{prediction['expected_return'] * 100:+.2f}%",
+    c1, c2 = st.columns(2)
+
+    with c1:
+
+        st.metric(
+            "Expected 5-Day Return",
+            (
+                f"{prediction['expected_return'] * 100:+.2f}%"
+            ),
+        )
+
+    with c2:
+
+        st.metric(
+            "Model Validation Accuracy",
+            (
+                f"{prediction['test_accuracy'] * 100:.1f}%"
+            ),
+        )
+
+    st.divider()
+
+    st.subheader(
+        "Model Ensemble"
     )
 
-    st.caption(
-        "This is a statistical estimate, not a guaranteed future price."
+    c1, c2, c3 = st.columns(3)
+
+    c1.metric(
+        "Gradient Boosting",
+        "40%",
+    )
+
+    c2.metric(
+        "Random Forest",
+        "35%",
+    )
+
+    c3.metric(
+        "Logistic / Ridge",
+        "25%",
     )
 
     st.divider()
 
-    st.subheader("Model ensemble")
-
-    model_cols = st.columns(3)
-
-    model_cols[0].metric(
-        "Gradient Boosting",
-        "40% weight",
-    )
-
-    model_cols[1].metric(
-        "Random Forest",
-        "35% weight",
-    )
-
-    model_cols[2].metric(
-        "Logistic Regression",
-        "25% weight",
+    st.caption(
+        f"Model version: "
+        f"{prediction['model_version']}"
     )
 
 
-with tab_chart:
+# -------------------------
+# Chart
+# -------------------------
 
-    st.subheader("Price History")
+with chart_tab:
+
+    st.subheader(
+        f"{ticker} Price History"
+    )
 
     chart = go.Figure()
 
@@ -238,17 +420,24 @@ with tab_chart:
     )
 
 
-with tab_backtest:
+# -------------------------
+# Backtest
+# -------------------------
 
-    st.subheader("Historical Backtest")
+with backtest_tab:
+
+    st.subheader(
+        "Historical Backtest"
+    )
 
     st.caption(
-        "The backtest evaluates the model on historical data. "
-        "Past performance does not guarantee future results."
+        "Backtesting evaluates historical observations "
+        "and does not guarantee future performance."
     )
 
     if st.button(
-        "Run Detailed Backtest"
+        "Run Detailed Backtest",
+        type="primary",
     ):
 
         with st.status(
@@ -257,11 +446,19 @@ with tab_backtest:
         ) as status:
 
             st.write(
-                "Preparing historical dataset..."
+                "Building historical features..."
+            )
+
+            features, feature_columns = (
+                create_features(
+                    data,
+                    market,
+                    horizon=5,
+                )
             )
 
             st.write(
-                "Training models on earlier observations..."
+                "Training historical models..."
             )
 
             results = run_backtest(
@@ -270,7 +467,7 @@ with tab_backtest:
             )
 
             st.write(
-                "Calculating performance metrics..."
+                "Calculating validation metrics..."
             )
 
             status.update(
@@ -279,24 +476,23 @@ with tab_backtest:
                 expanded=False,
             )
 
-        c1, c2, c3, c4 = st.columns(4)
+        c1, c2, c3 = st.columns(3)
 
         c1.metric(
-            "Accuracy",
-            f"{results['accuracy'] * 100:.1f}%",
+            "Direction Accuracy",
+            (
+                f"{results['accuracy'] * 100:.1f}%"
+            ),
         )
 
         c2.metric(
-            "Precision",
-            f"{results['precision'] * 100:.1f}%",
+            "Return RMSE",
+            (
+                f"{results['return_rmse'] * 100:.2f}%"
+            ),
         )
 
         c3.metric(
-            "Recall",
-            f"{results['recall'] * 100:.1f}%",
-        )
-
-        c4.metric(
             "Test Samples",
             results["samples"],
         )

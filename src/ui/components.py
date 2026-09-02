@@ -1,5 +1,5 @@
-import streamlit as st
 import plotly.graph_objects as go
+import streamlit as st
 
 
 def mini_chart(df):
@@ -10,8 +10,10 @@ def mini_chart(df):
             x=df.index,
             y=df["Close"],
             mode="lines",
-            line=dict(width=2),
-            hovertemplate="%{y:.2f}<extra></extra>",
+            hovertemplate=(
+                "$%{y:.2f}"
+                "<extra></extra>"
+            ),
         )
     )
 
@@ -35,55 +37,75 @@ def mini_chart(df):
     return fig
 
 
-def prediction_badge(prediction):
-    direction = prediction["direction"]
+def show_prediction_metrics(
+    prediction,
+):
+    c1, c2, c3, c4 = st.columns(4)
 
-    if direction == "Bullish":
-        label = "BULLISH"
-    elif direction == "Bearish":
-        label = "BEARISH"
-    else:
-        label = "NEUTRAL"
+    c1.metric(
+        "Signal",
+        prediction["direction"],
+    )
 
-    st.markdown(
-        f"### {label}"
+    c2.metric(
+        "Up Probability",
+        (
+            f"{prediction['probability_up'] * 100:.1f}%"
+        ),
+    )
+
+    c3.metric(
+        "Expected Return",
+        (
+            f"{prediction['expected_return'] * 100:+.2f}%"
+        ),
+    )
+
+    c4.metric(
+        "Confidence",
+        (
+            f"{prediction['confidence'] * 100:.1f}%"
+        ),
     )
 
 
-def stock_card(
-    ticker,
-    quote,
-    prediction=None,
-    chart=None,
+def prediction_card(
+    item,
 ):
+    ticker = item["ticker"]
+
     st.subheader(ticker)
 
-    col1, col2 = st.columns(2)
+    c1, c2, c3 = st.columns(3)
 
-    with col1:
-        st.metric(
-            "Price",
-            f"${quote['price']:,.2f}",
-            f"{quote['change_pct'] * 100:+.2f}%",
-        )
+    c1.metric(
+        "Price",
+        (
+            f"${item['price']:,.2f}"
+            if item["price"] is not None
+            else "—"
+        ),
+    )
 
-    if prediction:
+    c2.metric(
+        "Signal",
+        item["direction"] or "—",
+    )
 
-        with col2:
-            st.metric(
-                "Up Probability",
-                f"{prediction['probability_up'] * 100:.1f}%",
-            )
+    c3.metric(
+        "Up Probability",
+        (
+            f"{item['probability_up'] * 100:.1f}%"
+            if item[
+                "probability_up"
+            ]
+            is not None
+            else "—"
+        ),
+    )
 
+    if item["expected_return"] is not None:
         st.caption(
-            f"{prediction['direction']} · "
-            f"Expected return: "
-            f"{prediction['expected_return'] * 100:+.2f}%"
-        )
-
-    if chart is not None:
-        st.plotly_chart(
-            mini_chart(chart),
-            use_container_width=True,
-            config={"displayModeBar": False},
+            "Estimated return: "
+            f"{item['expected_return'] * 100:+.2f}%"
         )

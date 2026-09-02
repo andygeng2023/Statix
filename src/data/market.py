@@ -1,15 +1,21 @@
-import yfinance as yf
 import pandas as pd
 import streamlit as st
+import yfinance as yf
 
 
-@st.cache_data(ttl=300, show_spinner=False)
+@st.cache_data(
+    ttl=300,
+    show_spinner=False,
+)
 def get_stock_data(
     ticker: str,
     period: str = "2y",
     interval: str = "1d",
 ):
     ticker = ticker.upper().strip()
+
+    if not ticker:
+        raise ValueError("Ticker cannot be empty.")
 
     df = yf.download(
         ticker,
@@ -20,27 +26,52 @@ def get_stock_data(
     )
 
     if df.empty:
-        raise ValueError(f"No market data found for {ticker}")
+        raise ValueError(
+            f"No market data found for {ticker}."
+        )
 
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
 
-    df.columns = [str(c).title() for c in df.columns]
+    df.columns = [
+        str(column).title()
+        for column in df.columns
+    ]
 
-    required = ["Open", "High", "Low", "Close", "Volume"]
+    required = [
+        "Open",
+        "High",
+        "Low",
+        "Close",
+        "Volume",
+    ]
 
-    missing = [c for c in required if c not in df.columns]
+    missing = [
+        column
+        for column in required
+        if column not in df.columns
+    ]
 
     if missing:
-        raise ValueError(f"Missing columns: {missing}")
+        raise ValueError(
+            f"Missing market columns: {missing}"
+        )
 
     df = df[required].copy()
     df = df.dropna()
 
+    if len(df) < 100:
+        raise ValueError(
+            f"Not enough historical data for {ticker}."
+        )
+
     return df
 
 
-@st.cache_data(ttl=30, show_spinner=False)
+@st.cache_data(
+    ttl=30,
+    show_spinner=False,
+)
 def get_quote(ticker: str):
     ticker = ticker.upper().strip()
 
@@ -50,31 +81,37 @@ def get_quote(ticker: str):
     previous_close = None
 
     try:
-        fast = stock.fast_info
+        fast_info = stock.fast_info
 
-        price = fast.get("lastPrice")
-        previous_close = fast.get("previousClose")
+        price = fast_info.get("lastPrice")
+        previous_close = fast_info.get(
+            "previousClose"
+        )
 
     except Exception:
         pass
 
     if price is None:
-        data = get_stock_data(ticker, period="5d")
+        data = get_stock_data(
+            ticker,
+            period="5d",
+        )
 
-        if data.empty:
-            raise ValueError(f"Could not retrieve quote for {ticker}")
-
-        price = float(data["Close"].iloc[-1])
+        price = float(
+            data["Close"].iloc[-1]
+        )
 
         if len(data) >= 2:
-            previous_close = float(data["Close"].iloc[-2])
+            previous_close = float(
+                data["Close"].iloc[-2]
+            )
 
     if previous_close:
         change = price - previous_close
         change_pct = change / previous_close
     else:
-        change = 0
-        change_pct = 0
+        change = 0.0
+        change_pct = 0.0
 
     return {
         "ticker": ticker,

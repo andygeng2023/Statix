@@ -1,5 +1,6 @@
 import streamlit as st
 
+
 st.set_page_config(
     page_title="Statix",
     page_icon="📈",
@@ -7,12 +8,14 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+
 st.markdown(
     """
     <style>
     .block-container {
         max-width: 1400px;
         padding-top: 2rem;
+        padding-bottom: 4rem;
     }
 
     .statix-title {
@@ -27,19 +30,14 @@ st.markdown(
         margin-bottom: 2rem;
     }
 
-    .metric-card {
-        padding: 1rem;
-        border-radius: 14px;
-        border: 1px solid rgba(128,128,128,.2);
-    }
-
-    button {
-        border-radius: 10px !important;
+    [data-testid="stMetric"] {
+        border-radius: 12px;
     }
     </style>
     """,
     unsafe_allow_html=True,
 )
+
 
 pg = st.navigation(
     [
@@ -65,5 +63,6 @@ pg = st.navigation(
         ),
     ]
 )
+
 
 pg.run()

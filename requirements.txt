@@ -1,4 +1,4 @@
-streamlit
+streamlit>=1.40
 yfinance
 pandas
 numpy
@@ -6,3 +6,4 @@ scikit-learn
 plotly
 sqlalchemy
 psycopg2-binary
+requests
