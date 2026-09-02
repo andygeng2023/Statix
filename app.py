@@ -43,11 +43,27 @@ st.markdown(
 
 pg = st.navigation(
     [
-        st.Page("pages/home.py", title="Home", icon="⌂"),
-        st.Page("pages/search.py", title="Search", icon="⌕"),
-        st.Page("pages/watchlist.py", title="Watchlist", icon="★"),
-        st.Page("pages/prediction.py", title="Prediction", icon="◈"),
+        st.Page(
+            "pages/home.py",
+            title="Home",
+            icon="🏠",
+        ),
+        st.Page(
+            "pages/search.py",
+            title="Search",
+            icon="🔎",
+        ),
+        st.Page(
+            "pages/watchlist.py",
+            title="Watchlist",
+            icon="⭐",
+        ),
+        st.Page(
+            "pages/prediction.py",
+            title="Prediction",
+            icon="📊",
+        ),
     ]
 )
 
-pg.run() 
+pg.run()
