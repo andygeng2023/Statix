@@ -21,95 +21,179 @@ inject_css()
 
 
 def open_stock(ticker: str) -> None:
+    ticker = ticker.strip().upper()
+
+    if not ticker:
+        return
+
     st.session_state["selected_ticker"] = ticker
     st.switch_page("pages/prediction.py")
 
 
 page_header(
     "Search",
-    "Find a stock, ETF, or other supported market symbol.",
+    "Find a stock, ETF, or supported market symbol.",
 )
 
 
 query = st.text_input(
-    "Search",
+    "Search stocks",
     placeholder="Apple, Microsoft, NVDA, Tesla...",
+    key="stock_search",
 )
 
 
+# ---------------------------------------------------------
+# Search results
+# ---------------------------------------------------------
+
 if query.strip():
-    results = search_stocks(
-        query,
-        limit=12,
-    )
+
+    with st.spinner("Searching market symbols..."):
+        results = search_stocks(
+            query.strip(),
+            limit=12,
+        )
 
     if not results:
         st.warning(
             "No matching securities were found."
         )
 
-    for index, result in enumerate(results):
-        ticker = result["symbol"]
+    else:
+        st.markdown(
+            '<div class="section-title">Results</div>',
+            unsafe_allow_html=True,
+        )
 
-        with st.container(border=True):
-            left, middle, right = st.columns(
-                [2.8, 2, 1.3]
+        for index, result in enumerate(results):
+
+            ticker = result["symbol"]
+            name = result["name"]
+            exchange = result.get(
+                "exchange"
+            ) or result.get(
+                "type",
+                "",
             )
 
-            with left:
-                st.markdown(
-                    f"### {ticker}"
-                )
-                st.caption(
-                    result["name"]
-                )
+            with st.container(
+                border=True
+            ):
 
-            with middle:
-                st.caption(
-                    result["exchange"]
-                    or result["type"]
+                left, middle, right = st.columns(
+                    [3.0, 2.0, 1.4]
                 )
 
-                quote = get_quote(ticker)
+                # -----------------------------------------
+                # Security
+                # -----------------------------------------
 
-                st.write(
-                    format_money(
-                        quote.get("price")
+                with left:
+                    st.markdown(
+                        f"### {ticker}"
                     )
-                )
 
-                if quote.get("change_pct") is not None:
                     st.caption(
-                        format_percent(
-                            quote["change_pct"]
+                        name
+                    )
+
+                    if exchange:
+                        st.caption(
+                            exchange
+                        )
+
+                # -----------------------------------------
+                # Quote
+                # -----------------------------------------
+
+                with middle:
+
+                    quote = get_quote(
+                        ticker
+                    )
+
+                    price = quote.get(
+                        "price"
+                    )
+
+                    change_pct = quote.get(
+                        "change_pct"
+                    )
+
+                    st.caption(
+                        "Latest quote"
+                    )
+
+                    st.write(
+                        format_money(
+                            price
                         )
                     )
 
-            with right:
-                if st.button(
-                    "Analyze",
-                    key=f"analyze_{ticker}_{index}",
-                    use_container_width=True,
-                ):
-                    open_stock(ticker)
+                    if change_pct is not None:
+                        st.caption(
+                            format_percent(
+                                change_pct
+                            )
+                        )
 
-                if is_watched(ticker):
+                # -----------------------------------------
+                # Actions
+                # -----------------------------------------
+
+                with right:
+
                     if st.button(
-                        "Remove",
-                        key=f"remove_{ticker}_{index}",
+                        "Analyze",
+                        key=(
+                            f"search_analyze_"
+                            f"{ticker}_{index}"
+                        ),
                         use_container_width=True,
                     ):
-                        remove_from_watchlist(ticker)
-                        st.rerun()
-                else:
-                    if st.button(
-                        "Watch",
-                        key=f"watch_{ticker}_{index}",
-                        use_container_width=True,
-                    ):
-                        add_to_watchlist(ticker)
-                        st.rerun()
+                        open_stock(
+                            ticker
+                        )
 
+                    watched = is_watched(
+                        ticker
+                    )
+
+                    if watched:
+
+                        if st.button(
+                            "Remove",
+                            key=(
+                                f"search_remove_"
+                                f"{ticker}_{index}"
+                            ),
+                            use_container_width=True,
+                        ):
+                            remove_from_watchlist(
+                                ticker
+                            )
+                            st.rerun()
+
+                    else:
+
+                        if st.button(
+                            "Watch",
+                            key=(
+                                f"search_watch_"
+                                f"{ticker}_{index}"
+                            ),
+                            use_container_width=True,
+                        ):
+                            add_to_watchlist(
+                                ticker
+                            )
+                            st.rerun()
+
+
+# ---------------------------------------------------------
+# Popular
+# ---------------------------------------------------------
 
 st.markdown(
     '<div class="section-title">Popular</div>',
@@ -127,28 +211,61 @@ popular = [
     "SPY",
 ]
 
-columns = st.columns(4)
-
-for column, ticker in zip(
-    columns,
-    popular,
+for row_start in range(
+    0,
+    len(popular),
+    4,
 ):
-    with column:
-        quote = get_quote(ticker)
 
-        st.markdown(
-            f"**{ticker}**"
-        )
+    row = popular[
+        row_start:row_start + 4
+    ]
 
-        st.caption(
-            format_money(
-                quote.get("price")
+    columns = st.columns(4)
+
+    for column, ticker in zip(
+        columns,
+        row,
+    ):
+
+        with column:
+
+            quote = get_quote(
+                ticker
             )
-        )
 
-        if st.button(
-            "Analyze",
-            key=f"popular_{ticker}",
-            use_container_width=True,
-        ):
-            open_stock(ticker)
+            with st.container(
+                border=True
+            ):
+
+                st.markdown(
+                    f"### {ticker}"
+                )
+
+                st.write(
+                    format_money(
+                        quote.get(
+                            "price"
+                        )
+                    )
+                )
+
+                change_pct = quote.get(
+                    "change_pct"
+                )
+
+                if change_pct is not None:
+                    st.caption(
+                        format_percent(
+                            change_pct
+                        )
+                    )
+
+                if st.button(
+                    "Analyze",
+                    key=f"popular_{ticker}",
+                    use_container_width=True,
+                ):
+                    open_stock(
+                        ticker
+                    )
