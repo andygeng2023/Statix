@@ -1,30 +1,52 @@
-Statix/
+statix/
+│
 ├── app.py
 ├── requirements.txt
+├── README.md
 ├── .gitignore
+│
 ├── .streamlit/
+│   ├── config.toml
 │   └── secrets.toml.example
+│
 ├── pages/
 │   ├── home.py
 │   ├── search.py
 │   ├── stock.py
+│   ├── prediction.py
+│   ├── scanner.py
 │   ├── watchlist.py
-│   └── prediction.py
+│   └── settings.py
+│
 └── src/
     ├── __init__.py
     ├── auth.py
+    │
+    ├── config.py
+    │
     ├── data/
     │   ├── __init__.py
     │   ├── market.py
-    │   └── search.py
+    │   ├── search.py
+    │   └── providers/
+    │       ├── __init__.py
+    │       ├── base.py
+    │       └── yahoo.py
+    │
     ├── models/
     │   ├── __init__.py
     │   ├── features.py
     │   ├── ensemble.py
     │   └── backtest.py
+    │
+    ├── scanner/
+    │   ├── __init__.py
+    │   └── engine.py
+    │
     ├── storage/
     │   ├── __init__.py
     │   └── database.py
+    │
     └── ui/
         ├── __init__.py
         └── components.py

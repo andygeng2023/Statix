@@ -1,217 +1,131 @@
-from __future__ import annotations
-
-import pandas as pd
-import plotly.graph_objects as go
 import streamlit as st
 
 
-def inject_css() -> None:
+def metric_row(items):
+
+    columns = st.columns(
+        len(items)
+    )
+
+    for column, item in zip(
+        columns,
+        items,
+    ):
+
+        label = item[0]
+
+        value = item[1]
+
+        help_text = (
+            item[2]
+            if len(item) > 2
+            else None
+        )
+
+        column.metric(
+            label,
+            value,
+            help=help_text,
+        )
+
+
+def signal_color_class(signal):
+
+    if "Strong Bullish" in signal:
+        return "strong-bullish"
+
+    if signal == "Bullish":
+        return "bullish"
+
+    if signal == "Neutral":
+        return "neutral"
+
+    if signal == "Bearish":
+        return "bearish"
+
+    return "strong-bearish"
+
+
+def signal_badge(signal):
+
+    css_class = signal_color_class(
+        signal
+    )
 
     st.markdown(
-        """
-        <style>
-        .stock-card {
-            border: 1px solid rgba(128,128,128,.18);
-            border-radius: 16px;
-            padding: 1rem;
-            margin-bottom: .8rem;
-            background: rgba(128,128,128,.035);
-        }
-
-        .stock-card-title {
-            font-size: 1.1rem;
-            font-weight: 800;
-        }
-
-        .stock-card-muted {
-            color: #888;
-            font-size: .78rem;
-        }
-
-        .signal {
-            display: inline-block;
-            padding: .22rem .55rem;
-            border-radius: 999px;
-            font-size: .75rem;
-            font-weight: 700;
-            border: 1px solid rgba(128,128,128,.2);
-        }
-
-        .page-title {
-            font-size: 2.15rem;
-            font-weight: 850;
-            letter-spacing: -.045em;
-            margin-bottom: .15rem;
-        }
-
-        .page-subtitle {
-            color: #888;
-            margin-bottom: 1.4rem;
-        }
-        </style>
+        f"""
+        <div class="signal-badge {css_class}">
+            {signal}
+        </div>
         """,
         unsafe_allow_html=True,
     )
 
 
-def format_money(
-    value,
-) -> str:
+def probability_bars(
+    probabilities: dict,
+):
 
-    if value is None:
-        return "—"
+    for label, value in probabilities.items():
 
-    try:
-        return f"${float(value):,.2f}"
-
-    except Exception:
-        return "—"
-
-
-def format_percent(
-    value,
-    digits: int = 2,
-) -> str:
-
-    if value is None:
-        return "—"
-
-    try:
-
-        return (
-            f"{float(value):+.{digits}f}%"
-        )
-
-    except Exception:
-        return "—"
-
-
-def format_probability(
-    value,
-) -> str:
-
-    if value is None:
-        return "—"
-
-    try:
-
-        value = float(value)
-
-        if value <= 1:
-            value *= 100
-
-        return f"{value:.1f}%"
-
-    except Exception:
-        return "—"
-
-
-def format_confidence(
-    value,
-) -> str:
-
-    if value is None:
-        return "—"
-
-    try:
-
-        value = float(value)
-
-        if value <= 1:
-            value *= 100
-
-        return f"{value:.0f}%"
-
-    except Exception:
-        return "—"
-
-
-def mini_chart(
-    data: pd.DataFrame,
-) -> None:
-
-    if (
-        data is None
-        or data.empty
-        or "close" not in data.columns
-    ):
-        return
-
-    chart_data = (
-        data["close"]
-        .dropna()
-        .tail(90)
-    )
-
-    if chart_data.empty:
-        return
-
-    fig = go.Figure()
-
-    fig.add_trace(
-        go.Scatter(
-            x=chart_data.index,
-            y=chart_data.values,
-            mode="lines",
-            line=dict(width=2),
-            hovertemplate=(
-                "$%{y:.2f}<extra></extra>"
+        st.progress(
+            float(value),
+            text=(
+                f"{label} · "
+                f"{value * 100:.1f}%"
             ),
         )
+
+
+def stock_card(
+    ticker,
+    quote,
+    prediction=None,
+):
+
+    price = quote.get(
+        "price"
     )
 
-    fig.update_layout(
-        height=115,
-        margin=dict(
-            l=0,
-            r=0,
-            t=5,
-            b=5,
-        ),
-        showlegend=False,
-        xaxis=dict(
-            visible=False,
-            fixedrange=True,
-        ),
-        yaxis=dict(
-            visible=False,
-            fixedrange=True,
-        ),
-        hovermode="x unified",
+    change = quote.get(
+        "change_pct"
     )
 
-    st.plotly_chart(
-        fig,
-        use_container_width=True,
-        config={
-            "displayModeBar": False
-        },
+    price_text = (
+        f"${price:,.2f}"
+        if price is not None
+        else "—"
     )
 
-
-def page_header(
-    title: str,
-    subtitle: str = "",
-) -> None:
+    change_text = (
+        f"{change:+.2f}%"
+        if change is not None
+        else "—"
+    )
 
     st.markdown(
-        f'<div class="page-title">{title}</div>',
+        f"""
+        <div class="stock-card">
+            <div class="stock-symbol">
+                {ticker}
+            </div>
+            <div class="stock-price">
+                {price_text}
+            </div>
+            <div class="stock-change">
+                {change_text}
+            </div>
+        </div>
+        """,
         unsafe_allow_html=True,
     )
 
-    if subtitle:
+    if prediction:
 
-        st.markdown(
-            f'<div class="page-subtitle">{subtitle}</div>',
-            unsafe_allow_html=True,
+        st.caption(
+            f"{prediction['signal']} · "
+            f"{prediction['probability'] * 100:.0f}% "
+            f"model probability · "
+            f"{prediction['reliability'] * 100:.0f}% "
+            f"reliability"
         )
-
-
-def signal_badge(
-    signal: str,
-) -> None:
-
-    st.markdown(
-        f'<span class="signal">{signal}</span>',
-        unsafe_allow_html=True,
-    )

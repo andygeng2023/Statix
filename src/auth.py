@@ -1,134 +1,93 @@
-from __future__ import annotations
-
 import hashlib
-import os
 
 import streamlit as st
 
+from src.config import SETTINGS
+
 
 def auth_configured() -> bool:
-    try:
-        return bool(st.secrets.get("auth"))
-    except Exception:
-        return False
-
-
-def require_auth() -> bool:
-    try:
-        value = st.secrets.get(
-            "require_auth",
-            False,
-        )
-    except Exception:
-        value = os.getenv(
-            "STATIX_REQUIRE_AUTH",
-            "false",
-        )
-
-    return str(value).lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
+    return SETTINGS.require_auth
 
 
 def is_logged_in() -> bool:
     try:
-        return bool(
-            getattr(
-                st.user,
-                "is_logged_in",
-                False,
-            )
-        )
+        return bool(st.user.is_logged_in)
     except Exception:
         return False
 
 
 def current_user_id() -> str:
-    """
-    Returns a stable non-PII identifier.
+    if not auth_configured():
+        return "local-anonymous"
 
-    The database uses this to separate each user's
-    watchlist and prediction history.
-    """
-
-    if is_logged_in():
-
-        try:
-            user = st.user.to_dict()
-        except Exception:
-            user = {}
-
+    try:
+        issuer = str(st.user.get("iss", ""))
         subject = str(
-            user.get("sub")
-            or user.get("email")
-            or ""
-        )
-
-        issuer = str(
-            user.get("iss")
-            or ""
-        )
-
-        if subject:
-            raw = (
-                f"{issuer}:{subject}"
-                .encode("utf-8")
+            st.user.get(
+                "sub",
+                st.user.get("email", ""),
             )
+        )
 
-            return hashlib.sha256(
-                raw
-            ).hexdigest()
+        raw = f"{issuer}|{subject}"
 
-    return "local-anonymous"
+        return hashlib.sha256(
+            raw.encode("utf-8")
+        ).hexdigest()[:40]
+
+    except Exception:
+        return "unknown-user"
 
 
 def current_user_name() -> str:
-    if not is_logged_in():
+    if not auth_configured():
         return "Local user"
 
     try:
-        user = st.user.to_dict()
+        return (
+            st.user.get("name")
+            or st.user.get("email")
+            or "User"
+        )
     except Exception:
         return "User"
 
-    return str(
-        user.get("name")
-        or user.get("email")
-        or "User"
+
+def render_auth_gate() -> bool:
+    if not auth_configured():
+        return True
+
+    if is_logged_in():
+
+        with st.sidebar:
+            st.caption(
+                f"Signed in as {current_user_name()}"
+            )
+
+            st.button(
+                "Sign out",
+                use_container_width=True,
+                on_click=st.logout,
+            )
+
+        return True
+
+    st.title("Statix")
+
+    st.subheader(
+        "Market prediction research platform"
     )
 
+    st.write(
+        "Sign in to keep your watchlist, "
+        "view history, and prediction history "
+        "separate from other users."
+    )
 
-def render_auth_gate() -> None:
-    if not require_auth():
-        return
+    st.button(
+        "Sign in",
+        type="primary",
+        on_click=st.login,
+    )
 
-    if not auth_configured():
-        st.error(
-            "Authentication is required, but the "
-            "[auth] section is missing from Streamlit secrets."
-        )
-        st.stop()
-
-    if not is_logged_in():
-
-        st.title("Statix")
-
-        st.subheader(
-            "Sign in to continue"
-        )
-
-        st.write(
-            "Sign-in keeps your watchlist, viewed stocks, "
-            "and prediction history separate from other users."
-        )
-
-        st.button(
-            "Continue with Google",
-            on_click=st.login,
-            use_container_width=True,
-        )
-
-        st.stop()
+    return False

@@ -1,162 +1,108 @@
+import numpy as np
 import pandas as pd
 
 from sklearn.ensemble import (
     HistGradientBoostingClassifier,
 )
-
 from sklearn.metrics import (
     accuracy_score,
 )
 
 
 def walk_forward_backtest(
-    training_df,
-    feature_columns,
-    min_train=180,
-    test_size=30,
-    step=30,
+    data: pd.DataFrame,
+    features: list[str],
+    target_column: str = "target",
+    minimum_train_size: int = 300,
 ):
 
-    required_rows = (
-        min_train
-        + test_size
+    clean = data.replace(
+        [np.inf, -np.inf],
+        np.nan,
+    ).dropna(
+        subset=features
+        + [target_column]
     )
 
-    if len(training_df) < required_rows:
-
+    if len(clean) < minimum_train_size + 30:
         return {
             "accuracy": None,
-            "baseline": None,
-            "predictions": pd.DataFrame(),
+            "predictions": 0,
+            "message": (
+                "Not enough history "
+                "for backtesting."
+            ),
         }
 
-    X = (
-        training_df[
-            feature_columns
-        ]
-        .replace(
-            [
-                float("inf"),
-                -float("inf"),
-            ],
-            float("nan"),
-        )
-        .ffill()
-        .bfill()
-        .fillna(0)
+    predictions = []
+
+    actual = []
+
+    step = max(
+        20,
+        len(clean) // 12,
     )
 
-    y = (
-        training_df["target"]
-        .astype(int)
-    )
-
-    records = []
-
-    start = min_train
-
-    while (
-        start + test_size
-        <= len(training_df)
+    for end in range(
+        minimum_train_size,
+        len(clean),
+        step,
     ):
 
-        train_end = start
-        test_end = (
-            start + test_size
-        )
+        train = clean.iloc[:end]
 
-        X_train = X.iloc[
-            :train_end
+        test = clean.iloc[
+            end:min(
+                end + step,
+                len(clean),
+            )
         ]
 
-        y_train = y.iloc[
-            :train_end
-        ]
-
-        X_test = X.iloc[
-            train_end:test_end
-        ]
-
-        y_test = y.iloc[
-            train_end:test_end
-        ]
-
-        if y_train.nunique() < 2:
-
-            start += step
-            continue
+        if test.empty:
+            break
 
         model = (
             HistGradientBoostingClassifier(
                 max_iter=100,
-                learning_rate=0.05,
-                max_leaf_nodes=12,
-                min_samples_leaf=10,
-                l2_regularization=2,
+                learning_rate=0.06,
+                max_leaf_nodes=15,
                 random_state=42,
             )
         )
 
         model.fit(
-            X_train,
-            y_train,
+            train[features],
+            train[target_column].astype(int),
         )
 
-        predicted = model.predict(
-            X_test
+        pred = model.predict(
+            test[features]
         )
 
-        for date, actual, pred in zip(
-            training_df.index[
-                train_end:test_end
-            ],
-            y_test,
-            predicted,
-        ):
+        predictions.extend(
+            pred.tolist()
+        )
 
-            records.append(
-                {
-                    "date": date,
-                    "actual": int(
-                        actual
-                    ),
-                    "predicted": int(
-                        pred
-                    ),
-                }
-            )
+        actual.extend(
+            test[target_column]
+            .astype(int)
+            .tolist()
+        )
 
-        start += step
-
-    result = pd.DataFrame(
-        records
-    )
-
-    if result.empty:
-
+    if not actual:
         return {
             "accuracy": None,
-            "baseline": None,
-            "predictions": result,
+            "predictions": 0,
+            "message": "No test predictions.",
         }
-
-    accuracy = accuracy_score(
-        result["actual"],
-        result["predicted"],
-    )
-
-    baseline = float(
-        y.iloc[:min_train]
-        .value_counts(
-            normalize=True
-        )
-        .max()
-    )
 
     return {
         "accuracy": float(
-            accuracy
+            accuracy_score(
+                actual,
+                predictions,
+            )
         ),
-        "baseline": baseline,
-        "predictions": result,
+        "predictions": len(actual),
+        "message": "Completed",
     }

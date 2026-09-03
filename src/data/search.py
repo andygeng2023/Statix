@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import requests
 import streamlit as st
 
@@ -12,13 +10,13 @@ SEARCH_URL = (
 
 @st.cache_data(
     ttl=3600,
-    max_entries=300,
+    max_entries=2000,
     show_spinner=False,
 )
 def search_stocks(
     query: str,
-    limit: int = 12,
-) -> list[dict]:
+    limit: int = 15,
+):
 
     query = query.strip()
 
@@ -26,6 +24,7 @@ def search_stocks(
         return []
 
     try:
+
         response = requests.get(
             SEARCH_URL,
             params={
@@ -33,63 +32,50 @@ def search_stocks(
                 "quotesCount": limit,
                 "newsCount": 0,
             },
-            headers={
-                "User-Agent": "Mozilla/5.0",
-            },
-            timeout=8,
+            timeout=5,
         )
 
         response.raise_for_status()
 
-        data = response.json()
+        payload = response.json()
+
+        results = []
+
+        for item in payload.get(
+            "quotes",
+            [],
+        ):
+
+            symbol = item.get("symbol")
+
+            if not symbol:
+                continue
+
+            name = (
+                item.get("longname")
+                or item.get("shortname")
+                or symbol
+            )
+
+            results.append(
+                {
+                    "symbol": symbol.upper(),
+                    "name": name,
+                    "type": item.get(
+                        "quoteType",
+                        "",
+                    ),
+                    "exchange": item.get(
+                        "exchange",
+                        "",
+                    ),
+                }
+            )
+
+        return results[:limit]
 
     except Exception:
         return []
 
-    results = []
 
-    for item in data.get(
-        "quotes",
-        [],
-    ):
-
-        if item.get(
-            "quoteType"
-        ) not in {
-            "EQUITY",
-            "ETF",
-            "MUTUALFUND",
-        }:
-            continue
-
-        symbol = item.get(
-            "symbol"
-        )
-
-        if not symbol:
-            continue
-
-        results.append(
-            {
-                "symbol": symbol,
-                "name": (
-                    item.get("longname")
-                    or item.get("shortname")
-                    or symbol
-                ),
-                "exchange": item.get(
-                    "exchange",
-                    "",
-                ),
-                "type": item.get(
-                    "quoteType",
-                    "",
-                ),
-            }
-        )
-
-    return results
-
-
-# Compatibility with older Statix versions.
 search_symbols = search_stocks

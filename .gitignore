@@ -216,8 +216,28 @@ __marimo__/
 
 # This project
 *.py[cod]
-.venv/
+
 .env
+.env.*
+
 .streamlit/secrets.toml
+
 statix.db
+*.db
+
 .DS_Store
+
+.pytest_cache/
+.mypy_cache/
+
+.vscode/
+.idea/
+
+*.log
+
+models/
+artifacts/
+
+.streamlit/
+!.streamlit/config.toml
+!.streamlit/secrets.toml.example

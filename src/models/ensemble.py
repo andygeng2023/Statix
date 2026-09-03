@@ -1,6 +1,4 @@
-from __future__ import annotations
-
-from typing import Any
+from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
@@ -13,11 +11,14 @@ from sklearn.ensemble import (
 from sklearn.linear_model import (
     LogisticRegression,
 )
+from sklearn.metrics import accuracy_score
+from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import Pipeline
+
+from src.config import SETTINGS
 
 
-MODEL_VERSION = (
-    "statix-v7.2-fast-ensemble-1"
-)
+MODEL_VERSION = SETTINGS.model_version
 
 
 CLASS_NAMES = [
@@ -29,429 +30,327 @@ CLASS_NAMES = [
 ]
 
 
-def _clean(
-    df: pd.DataFrame,
-    columns: list[str],
-) -> pd.DataFrame:
+@dataclass
+class GlobalModel:
 
-    x = df[
-        columns
-    ].apply(
-        pd.to_numeric,
-        errors="coerce",
+    classifier_a: object
+
+    classifier_b: object
+
+    regressor: object
+
+    validation_accuracy: float | None
+
+    training_rows: int
+
+    model_version: str
+
+
+def _clean_training_data(
+    training_df: pd.DataFrame,
+    features: list[str],
+):
+
+    clean = training_df.replace(
+        [np.inf, -np.inf],
+        np.nan,
+    )
+
+    clean = clean.dropna(
+        subset=features
+        + [
+            "target",
+            "future_return",
+        ]
+    )
+
+    return clean
+
+
+def _build_models():
+
+    classifier_a = HistGradientBoostingClassifier(
+        max_iter=120,
+        learning_rate=0.055,
+        max_leaf_nodes=15,
+        l2_regularization=0.4,
+        random_state=42,
+    )
+
+    classifier_b = Pipeline(
+        [
+            (
+                "scale",
+                StandardScaler(),
+            ),
+            (
+                "model",
+                LogisticRegression(
+                    solver="lbfgs",
+                    max_iter=1000,
+                    C=0.5,
+                    random_state=42,
+                ),
+            ),
+        ]
+    )
+
+    regressor = HistGradientBoostingRegressor(
+        max_iter=120,
+        learning_rate=0.055,
+        max_leaf_nodes=15,
+        l2_regularization=0.4,
+        loss="squared_error",
+        random_state=42,
     )
 
     return (
-        x
-        .replace(
-            [
-                np.inf,
-                -np.inf,
-            ],
-            np.nan,
-        )
-        .fillna(0.0)
-        .astype(float)
+        classifier_a,
+        classifier_b,
+        regressor,
     )
-
-
-def _align_probs(
-    model: Any,
-    x: pd.DataFrame,
-) -> np.ndarray:
-
-    probabilities = (
-        model
-        .predict_proba(x)[0]
-    )
-
-    output = np.zeros(
-        len(CLASS_NAMES),
-        dtype=float,
-    )
-
-    for i, cls in enumerate(
-        getattr(
-            model,
-            "classes_",
-            [],
-        )
-    ):
-
-        index = int(cls)
-
-        if 0 <= index < len(
-            CLASS_NAMES
-        ):
-
-            output[index] = (
-                probabilities[i]
-            )
-
-    total = output.sum()
-
-    if total:
-        return output / total
-
-    return np.ones(
-        len(CLASS_NAMES)
-    ) / len(CLASS_NAMES)
 
 
 @st.cache_resource(
     ttl=21600,
-    max_entries=150,
+    max_entries=100,
     show_spinner=False,
 )
-def _train_models(
-    ticker: str,
-    market_date: str,
-    feature_columns: tuple[str, ...],
+def train_global_model(
     training_df: pd.DataFrame,
+    features: tuple[str, ...],
 ):
 
-    columns = list(
-        feature_columns
-    )
+    features = list(features)
 
-    x = _clean(
+    clean = _clean_training_data(
         training_df,
-        columns,
+        features,
     )
 
-    y = pd.to_numeric(
-        training_df["target"],
-        errors="coerce",
-    ).astype(int)
-
-    future = pd.to_numeric(
-        training_df[
-            "future_return"
-        ],
-        errors="coerce",
-    )
-
-    valid = (
-        future.notna()
-        & y.notna()
-    )
-
-    x = x.loc[valid]
-    y = y.loc[valid]
-    future = future.loc[valid]
-
-    if len(x) < 180:
-
+    if len(clean) < SETTINGS.minimum_training_rows:
         raise ValueError(
-            f"Only {len(x)} usable rows "
-            "are available; 180 are required."
+            "Not enough training data. "
+            f"Need at least "
+            f"{SETTINGS.minimum_training_rows} "
+            "clean rows."
         )
 
-    if y.nunique() < 2:
+    X = clean[features]
 
+    y = clean["target"].astype(int)
+
+    returns = (
+        clean["future_return"]
+        .astype(float)
+    )
+
+    unique_classes = sorted(
+        y.unique().tolist()
+    )
+
+    if len(unique_classes) < 5:
         raise ValueError(
-            "The training target contains "
-            "fewer than two classes."
+            "Training data does not contain "
+            "all prediction classes."
         )
 
-    classifier_a = (
-        HistGradientBoostingClassifier(
-            max_iter=90,
-            learning_rate=0.07,
-            max_leaf_nodes=10,
-            min_samples_leaf=12,
-            l2_regularization=2.0,
-            random_state=42,
-        )
-    )
+    split = int(len(X) * 0.8)
 
-    classifier_b = (
-        LogisticRegression(
-            solver="lbfgs",
-            max_iter=800,
-            C=0.6,
-            random_state=42,
+    if split < 250:
+        raise ValueError(
+            "Training history is too short."
         )
-    )
 
-    regressor = (
-        HistGradientBoostingRegressor(
-            max_iter=90,
-            learning_rate=0.07,
-            max_leaf_nodes=10,
-            min_samples_leaf=12,
-            l2_regularization=2.0,
-            random_state=42,
-        )
+    X_train = X.iloc[:split]
+
+    X_test = X.iloc[split:]
+
+    y_train = y.iloc[:split]
+
+    y_test = y.iloc[split:]
+
+    returns_train = returns.iloc[:split]
+
+    classifier_a, classifier_b, regressor = (
+        _build_models()
     )
 
     classifier_a.fit(
-        x,
-        y,
+        X_train,
+        y_train,
     )
 
     classifier_b.fit(
-        x,
-        y,
+        X_train,
+        y_train,
     )
 
     regressor.fit(
-        x,
-        future,
+        X_train,
+        returns_train,
     )
 
-    return (
-        classifier_a,
-        classifier_b,
-        regressor,
-        len(x),
-    )
+    validation_accuracy = None
 
+    if len(X_test) > 0:
 
-def train_and_predict(
-    training_df: pd.DataFrame,
-    latest_df: pd.DataFrame,
-    feature_columns: list[str],
-    ticker: str = "UNKNOWN",
-    market_date: str = "UNKNOWN",
-    validate: bool = False,
-) -> dict[str, Any]:
-
-    if (
-        training_df.empty
-        or latest_df.empty
-    ):
-
-        raise ValueError(
-            "Training or latest feature data is empty."
+        probabilities_a = (
+            classifier_a
+            .predict_proba(X_test)
         )
 
-    columns = tuple(
-        feature_columns
+        probabilities_b = (
+            classifier_b
+            .predict_proba(X_test)
+        )
+
+        probabilities = (
+            probabilities_a
+            + probabilities_b
+        ) / 2
+
+        predictions = (
+            classifier_a
+            .classes_[
+                np.argmax(
+                    probabilities,
+                    axis=1,
+                )
+            ]
+        )
+
+        validation_accuracy = float(
+            accuracy_score(
+                y_test,
+                predictions,
+            )
+        )
+
+    return GlobalModel(
+        classifier_a=classifier_a,
+        classifier_b=classifier_b,
+        regressor=regressor,
+        validation_accuracy=validation_accuracy,
+        training_rows=len(clean),
+        model_version=MODEL_VERSION,
     )
 
-    x_latest = _clean(
-        latest_df,
-        list(columns),
+
+def predict_with_model(
+    model: GlobalModel,
+    latest_df: pd.DataFrame,
+    features: list[str],
+):
+
+    X = latest_df[
+        features
+    ].replace(
+        [np.inf, -np.inf],
+        np.nan,
     )
 
-    (
-        classifier_a,
-        classifier_b,
-        regressor,
-        rows,
-    ) = _train_models(
-        ticker,
-        market_date,
-        columns,
-        training_df,
+    X = X.ffill().bfill()
+
+    if X.isna().any().any():
+        raise ValueError(
+            "Latest market row contains "
+            "missing model features."
+        )
+
+    p_a = (
+        model.classifier_a
+        .predict_proba(X)[0]
     )
 
-    p1 = _align_probs(
-        classifier_a,
-        x_latest,
-    )
-
-    p2 = _align_probs(
-        classifier_b,
-        x_latest,
+    p_b = (
+        model.classifier_b
+        .predict_proba(X)[0]
     )
 
     probabilities = (
-        p1 + p2
-    ) / 2.0
-
-    probabilities /= (
-        probabilities.sum()
-    )
+        p_a + p_b
+    ) / 2
 
     predicted_class = int(
-        np.argmax(
-            probabilities
-        )
+        np.argmax(probabilities)
     )
 
-    signal = CLASS_NAMES[
-        predicted_class
-    ]
+    probability = float(
+        probabilities[predicted_class]
+    )
 
-    predictions = np.array(
-        [
-            np.argmax(p1),
-            np.argmax(p2),
-        ]
+    expected_return = float(
+        model.regressor
+        .predict(X)[0]
     )
 
     agreement = float(
-        np.mean(
-            predictions
-            == predicted_class
-        )
-    )
-
-    expected_return = float(
-        regressor.predict(
-            x_latest
-        )[0]
-    )
-
-    expected_return = float(
-        np.clip(
-            expected_return,
-            -1.0,
-            1.0,
-        )
-    )
-
-    probability_strength = max(
-        0.0,
-        (
-            float(
-                probabilities.max()
+        1
+        - np.mean(
+            np.abs(
+                p_a - p_b
             )
-            - 0.2
         )
-        / 0.8,
     )
 
-    confidence = float(
+    validation = (
+        model.validation_accuracy
+        if model.validation_accuracy
+        is not None
+        else 0.5
+    )
+
+    data_quality = 1.0
+
+    reliability = float(
         np.clip(
-            0.65
-            * probability_strength
-            + 0.35
-            * agreement,
+            (
+                probability * 0.45
+                + agreement * 0.25
+                + validation * 0.20
+                + data_quality * 0.10
+            ),
             0,
             1,
         )
     )
 
-    result = {
-        "signal": signal,
-        "probability_up": float(
-            probabilities[3]
-            + probabilities[4]
-        ),
-        "expected_return": expected_return,
-        "confidence": confidence,
-        "class_probabilities": {
-            CLASS_NAMES[i]: float(
-                probabilities[i]
-            )
-            for i in range(5)
-        },
-        "model_agreement": agreement,
-        "validation_accuracy": None,
-        "baseline_accuracy": None,
-        "validation_folds": 0,
-        "training_rows": rows,
-        "feature_count": len(columns),
-        "rmse": None,
-        "model_version": MODEL_VERSION,
+    class_probabilities = {
+        name: float(probabilities[i])
+        for i, name in enumerate(
+            CLASS_NAMES
+        )
     }
 
-    if validate:
-
-        result.update(
-            _quick_validation(
-                training_df,
-                list(columns),
-            )
-        )
-
-    return result
-
-
-def _quick_validation(
-    df: pd.DataFrame,
-    columns: list[str],
-) -> dict[str, Any]:
-
-    if len(df) < 260:
-
-        return {
-            "validation_accuracy": None,
-            "baseline_accuracy": None,
-            "validation_folds": 0,
-        }
-
-    split = int(
-        len(df) * 0.85
-    )
-
-    train = df.iloc[
-        :split
-    ]
-
-    test = df.iloc[
-        split:
-    ]
-
-    x_train = _clean(
-        train,
-        columns,
-    )
-
-    x_test = _clean(
-        test,
-        columns,
-    )
-
-    y_train = (
-        pd.to_numeric(
-            train["target"],
-            errors="coerce",
-        )
-        .astype(int)
-    )
-
-    y_test = (
-        pd.to_numeric(
-            test["target"],
-            errors="coerce",
-        )
-        .astype(int)
-    )
-
-    if y_train.nunique() < 2:
-
-        return {
-            "validation_accuracy": None,
-            "baseline_accuracy": None,
-            "validation_folds": 0,
-        }
-
-    model = (
-        HistGradientBoostingClassifier(
-            max_iter=70,
-            learning_rate=0.08,
-            max_leaf_nodes=10,
-            min_samples_leaf=12,
-            random_state=42,
-        )
-    )
-
-    model.fit(
-        x_train,
-        y_train,
-    )
-
-    accuracy = float(
-        (
-            model.predict(x_test)
-            == y_test
-        ).mean()
-    )
-
-    baseline = float(
-        y_train
-        .value_counts(
-            normalize=True
-        )
-        .max()
-    )
-
     return {
-        "validation_accuracy": accuracy,
-        "baseline_accuracy": baseline,
-        "validation_folds": 1,
+        "signal": CLASS_NAMES[
+            predicted_class
+        ],
+
+        "class_id": predicted_class,
+
+        "probability": probability,
+
+        "class_probabilities": (
+            class_probabilities
+        ),
+
+        "expected_return": expected_return,
+
+        "reliability": reliability,
+
+        "model_agreement": agreement,
+
+        "validation_accuracy": (
+            model.validation_accuracy
+        ),
+
+        "training_rows": (
+            model.training_rows
+        ),
+
+        "model_version": (
+            model.model_version
+        ),
     }

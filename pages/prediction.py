@@ -1,141 +1,79 @@
-from __future__ import annotations
-
 import streamlit as st
 
+from src.config import SETTINGS
 from src.data.market import (
     get_stock_data,
 )
-
 from src.models.ensemble import (
-    CLASS_NAMES,
     MODEL_VERSION,
-    train_and_predict,
+    predict_with_model,
+    train_global_model,
 )
-
 from src.models.features import (
     FEATURE_VERSION,
     create_features,
 )
-
 from src.storage.database import (
-    add_to_watchlist,
     get_cached_prediction,
-    is_watched,
-    remove_from_watchlist,
-    save_prediction_cache,
-    save_prediction_history,
-    save_viewed_prediction,
+    save_prediction,
 )
-
-from src.ui.components import (
-    format_confidence,
-    format_percent,
-    format_probability,
-    inject_css,
-    page_header,
-)
+from src.data.market import get_stock_data
 
 
-inject_css()
-
-
-HORIZON = 5
-
-
-if "selected_ticker" not in st.session_state:
-
-    st.session_state[
-        "selected_ticker"
-    ] = None
-
-
-ticker = str(
-    st.session_state.get(
+ticker = (
+    st.query_params.get("ticker")
+    or st.session_state.get(
         "selected_ticker"
     )
-    or ""
-).strip().upper()
+    or "AAPL"
+).upper().strip()
 
 
-if not ticker:
-
-    page_header(
-        "Prediction",
-        "Select a stock first.",
-    )
-
-    if st.button(
-        "Search stocks",
-        use_container_width=True,
-    ):
-
-        st.switch_page(
-            "pages/search.py"
-        )
-
-    st.stop()
-
-
-page_header(
-    ticker,
-    "Statix 5-session model prediction",
+st.title(
+    f"Prediction · {ticker}"
 )
 
 
-if st.button(
-    "Back to stock overview"
-):
-
-    st.switch_page(
-        "pages/stock.py"
-    )
-
-
-# Historical data is cached separately.
-stock_df = get_stock_data(
+history = get_stock_data(
     ticker,
-    period="5y",
-    interval="1d",
+    "5y",
+    "1d",
 )
 
-market_df = get_stock_data(
+market = get_stock_data(
     "SPY",
-    period="5y",
-    interval="1d",
+    "5y",
+    "1d",
 )
 
 
-if stock_df.empty:
+if history.empty:
 
     st.error(
-        "Historical data could not be loaded."
+        "Unable to retrieve stock history."
     )
 
     st.stop()
+
+
+training, latest, features = (
+    create_features(
+        history,
+        market,
+        SETTINGS.prediction_horizon,
+    )
+)
 
 
 market_date = str(
-    stock_df.index[-1].date()
+    history.index[-1].date()
 )
 
-
-price = float(
-    stock_df[
-        "close"
-    ].iloc[-1]
-)
-
-
-# ---------------------------------------------------------
-# Shared prediction cache
-# ---------------------------------------------------------
 
 cached = get_cached_prediction(
-    ticker=ticker,
-    market_date=market_date,
-    model_version=MODEL_VERSION,
-    feature_version=FEATURE_VERSION,
-    horizon=HORIZON,
+    ticker,
+    market_date,
+    MODEL_VERSION,
 )
 
 
@@ -144,306 +82,182 @@ if cached:
     result = cached
 
     st.success(
-        f"Using saved prediction for {market_date}."
+        "Using cached prediction for "
+        f"{market_date}."
     )
 
 else:
 
-    st.info(
-        "The model does not run automatically. "
-        "Generate it only when you need the prediction."
-    )
-
-    if not st.button(
-        "Generate 5D prediction",
-        type="primary",
-        use_container_width=True,
-    ):
-
-        st.stop()
-
-    progress = st.progress(
-        0,
-        text="Preparing market features...",
-    )
-
     try:
 
-        progress.progress(
-            20,
-            text="Building technical features...",
-        )
+        with st.spinner(
+            "Preparing prediction model..."
+        ):
 
-        (
-            training_df,
-            latest_df,
-            feature_columns,
-        ) = create_features(
-            stock_df=stock_df,
-            market_df=market_df,
-            horizon=HORIZON,
-        )
+            model = train_global_model(
+                training,
+                tuple(features),
+            )
 
-        progress.progress(
-            55,
-            text="Training or loading the fast model...",
-        )
+            result = predict_with_model(
+                model,
+                latest,
+                features,
+            )
 
-        result = train_and_predict(
-            training_df=training_df,
-            latest_df=latest_df,
-            feature_columns=feature_columns,
-            ticker=ticker,
-            market_date=market_date,
-            validate=False,
-        )
-
-        progress.progress(
-            85,
-            text="Saving prediction...",
-        )
-
-        result.update(
-            {
-                "ticker": ticker,
-                "market_date": market_date,
-                "price": price,
-                "feature_version": FEATURE_VERSION,
-                "horizon": HORIZON,
-            }
-        )
-
-        save_prediction_cache(
+        save_prediction(
             ticker,
+            market_date,
             result,
         )
 
-        save_viewed_prediction(
-            ticker,
-            result,
-        )
-
-        save_prediction_history(
-            ticker,
-            result,
-        )
-
-        progress.progress(
-            100,
-            text="Prediction ready.",
-        )
-
-        st.success(
-            "Prediction generated."
-        )
-
-    except Exception as exc:
-
-        progress.empty()
+    except Exception as error:
 
         st.error(
-            "Statix could not generate the prediction."
+            "Prediction unavailable."
         )
 
-        st.exception(
-            exc
+        st.caption(
+            str(error)
         )
 
         st.stop()
 
 
-# ---------------------------------------------------------
-# Results
-# ---------------------------------------------------------
+columns = st.columns(5)
 
-signal = result.get(
-    "signal",
-    "Neutral",
+
+columns[0].metric(
+    "Signal",
+    result["signal"],
 )
 
-probability_up = result.get(
-    "probability_up"
+columns[1].metric(
+    "Probability",
+    f"{result['probability'] * 100:.1f}%",
 )
 
-expected_return = result.get(
-    "expected_return"
+columns[2].metric(
+    "Expected 5D",
+    (
+        f"{result['expected_return'] * 100:+.2f}%"
+    ),
 )
 
-confidence = result.get(
-    "confidence"
+columns[3].metric(
+    "Reliability",
+    (
+        f"{result['reliability'] * 100:.0f}%"
+    ),
+)
+
+columns[4].metric(
+    "Agreement",
+    (
+        f"{result['model_agreement'] * 100:.0f}%"
+    ),
 )
 
 
 st.divider()
 
-st.subheader(
-    "Statix prediction"
-)
-
-st.markdown(
-    f"## {signal}"
-)
-
-
-cols = st.columns(3)
-
-
-with cols[0]:
-
-    st.metric(
-        "Probability up",
-        format_probability(
-            probability_up
-        ),
-    )
-
-
-with cols[1]:
-
-    st.metric(
-        "Expected 5D return",
-        format_percent(
-            expected_return * 100
-            if expected_return is not None
-            else None
-        ),
-    )
-
-
-with cols[2]:
-
-    st.metric(
-        "Model confidence",
-        format_confidence(
-            confidence
-        ),
-    )
-
-
-st.caption(
-    f"Based on market data through {market_date}. "
-    "Model confidence is not a guarantee of accuracy."
-)
-
-
-# ---------------------------------------------------------
-# Class probabilities
-# ---------------------------------------------------------
 
 st.subheader(
-    "Prediction distribution"
+    "Prediction Distribution"
 )
 
 
-probabilities = result.get(
-    "class_probabilities",
-    {},
-)
-
-
-for name in CLASS_NAMES:
-
-    value = float(
-        probabilities.get(
-            name,
-            0,
-        )
-    )
-
-    value = max(
-        0.0,
-        min(
-            1.0,
-            value,
-        ),
-    )
-
-    st.progress(
-        value,
-        text=(
-            f"{name}: "
-            f"{value * 100:.1f}%"
-        ),
-    )
-
-
-# ---------------------------------------------------------
-# Model information
-# ---------------------------------------------------------
-
-st.subheader(
-    "Model details"
-)
-
-
-cols = st.columns(4)
-
-
-with cols[0]:
-
-    st.metric(
-        "Training rows",
-        f"{result.get('training_rows', 0):,}",
-    )
-
-
-with cols[1]:
-
-    st.metric(
-        "Features",
-        result.get(
-            "feature_count",
-            "—",
-        ),
-    )
-
-
-with cols[2]:
-
-    st.metric(
-        "Model agreement",
-        format_confidence(
-            result.get(
-                "model_agreement"
-            )
-        ),
-    )
-
-
-with cols[3]:
-
-    st.metric(
-        "Validation",
-        "On demand",
-    )
-
-
-# ---------------------------------------------------------
-# Watchlist
-# ---------------------------------------------------------
-
-if is_watched(
-    ticker
+for label, probability in (
+    result["class_probabilities"]
+    .items()
 ):
 
-    if st.button(
-        "Remove from watchlist"
-    ):
+    st.progress(
+        float(probability),
+        text=(
+            f"{label} · "
+            f"{probability * 100:.1f}%"
+        ),
+    )
 
-        remove_from_watchlist(
-            ticker
+
+st.divider()
+
+
+left, right = st.columns(2)
+
+
+with left:
+
+    st.subheader(
+        "Reliability"
+    )
+
+    st.metric(
+        "Model reliability",
+        f"{result['reliability'] * 100:.0f}%",
+    )
+
+    st.caption(
+        "This is a model-derived quality "
+        "score. It is not a probability that "
+        "the prediction will be correct."
+    )
+
+
+with right:
+
+    st.subheader(
+        "Validation"
+    )
+
+    validation = result.get(
+        "validation_accuracy"
+    )
+
+    if validation is not None:
+
+        st.metric(
+            "Validation accuracy",
+            f"{validation * 100:.1f}%",
         )
 
-        st.rerun()
+    else:
 
-else:
-
-    if st.button(
-        "Add to watchlist"
-    ):
-
-        add_to_watchlist(
-            ticker
+        st.write(
+            "Not available."
         )
 
-        st.rerun()
+
+st.divider()
+
+
+st.subheader(
+    "Model Information"
+)
+
+
+st.write(
+    f"Model version: `{MODEL_VERSION}`"
+)
+
+st.write(
+    f"Feature version: `{FEATURE_VERSION}`"
+)
+
+st.write(
+    f"Training rows: "
+    f"{result.get('training_rows', '—')}"
+)
+
+st.write(
+    f"Market date: `{market_date}`"
+)
+
+
+st.info(
+    "Statix predictions are experimental "
+    "model outputs for research. They are "
+    "not guarantees and should not be treated "
+    "as individualized financial advice."
+)

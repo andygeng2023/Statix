@@ -1,11 +1,6 @@
-from __future__ import annotations
-
 import json
 import os
-from datetime import datetime
-from pathlib import Path
-
-import streamlit as st
+from datetime import datetime, timezone
 
 from sqlalchemy import (
     DateTime,
@@ -16,7 +11,6 @@ from sqlalchemy import (
     UniqueConstraint,
     create_engine,
 )
-
 from sqlalchemy.orm import (
     DeclarativeBase,
     Mapped,
@@ -25,73 +19,34 @@ from sqlalchemy.orm import (
 )
 
 from src.auth import current_user_id
+from src.config import SETTINGS
 
 
-BASE_DIR = (
-    Path(__file__)
-    .resolve()
-    .parents[2]
-)
+DB_URL = SETTINGS.database_url
 
-SQLITE_PATH = (
-    BASE_DIR
-    / "statix.db"
-)
-
-
-def _database_url() -> str:
-
-    try:
-
-        url = st.secrets.get(
-            "database_url"
-        )
-
-        if url:
-            return str(url)
-
-    except Exception:
-        pass
-
-    url = os.getenv(
-        "DATABASE_URL"
+if DB_URL.startswith("postgres://"):
+    DB_URL = DB_URL.replace(
+        "postgres://",
+        "postgresql+psycopg://",
+        1,
     )
-
-    if url:
-        return url
-
-    return (
-        f"sqlite:///{SQLITE_PATH}"
-    )
-
-
-DATABASE_URL = (
-    _database_url()
-)
-
 
 connect_args = {}
 
-if DATABASE_URL.startswith(
-    "sqlite"
-):
-
+if DB_URL.startswith("sqlite"):
     connect_args = {
         "check_same_thread": False
     }
 
 
 engine = create_engine(
-    DATABASE_URL,
+    DB_URL,
     connect_args=connect_args,
     pool_pre_ping=True,
 )
 
-
-SessionLocal = sessionmaker(
+Session = sessionmaker(
     bind=engine,
-    autoflush=False,
-    autocommit=False,
     expire_on_commit=False,
 )
 
@@ -102,486 +57,146 @@ class Base(DeclarativeBase):
 
 class UserWatchlist(Base):
 
-    __tablename__ = (
-        "user_watchlist"
+    __tablename__ = "user_watchlist"
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+    )
+
+    user_id: Mapped[str] = mapped_column(
+        String(80),
+        index=True,
+    )
+
+    ticker: Mapped[str] = mapped_column(
+        String(20)
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
     )
 
     __table_args__ = (
         UniqueConstraint(
             "user_id",
             "ticker",
-            name="uq_user_watchlist_ticker",
+            name="uq_user_watchlist",
         ),
     )
 
-    id: Mapped[int] = (
-        mapped_column(
-            Integer,
-            primary_key=True,
-        )
+
+class UserViewed(Base):
+
+    __tablename__ = "user_viewed"
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
     )
 
-    user_id: Mapped[str] = (
-        mapped_column(
-            String(128),
-            index=True,
-            nullable=False,
-        )
+    user_id: Mapped[str] = mapped_column(
+        String(80),
+        index=True,
     )
 
-    ticker: Mapped[str] = (
-        mapped_column(
-            String(20),
-            index=True,
-            nullable=False,
-        )
+    ticker: Mapped[str] = mapped_column(
+        String(20)
     )
 
-    added_at: Mapped[datetime] = (
-        mapped_column(
-            DateTime,
-            default=datetime.utcnow,
-            nullable=False,
-        )
+    viewed_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
     )
 
 
-class UserViewedStock(Base):
+class UserPrediction(Base):
 
-    __tablename__ = (
-        "user_viewed_stocks"
+    __tablename__ = "user_predictions"
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
     )
 
-    __table_args__ = (
-        UniqueConstraint(
-            "user_id",
-            "ticker",
-            name="uq_user_viewed_ticker",
-        ),
+    user_id: Mapped[str] = mapped_column(
+        String(80),
+        index=True,
     )
 
-    id: Mapped[int] = (
-        mapped_column(
-            Integer,
-            primary_key=True,
-        )
+    ticker: Mapped[str] = mapped_column(
+        String(20)
     )
 
-    user_id: Mapped[str] = (
-        mapped_column(
-            String(128),
-            index=True,
-            nullable=False,
-        )
+    market_date: Mapped[str] = mapped_column(
+        String(40)
     )
 
-    ticker: Mapped[str] = (
-        mapped_column(
-            String(20),
-            index=True,
-            nullable=False,
-        )
+    model_version: Mapped[str] = mapped_column(
+        String(100)
     )
 
-    last_viewed: Mapped[datetime] = (
-        mapped_column(
-            DateTime,
-            default=datetime.utcnow,
-            nullable=False,
-        )
+    result_json: Mapped[str] = mapped_column(
+        Text
     )
 
-    last_market_date: Mapped[str | None] = (
-        mapped_column(
-            String(30),
-            nullable=True,
-        )
-    )
-
-    last_price: Mapped[float | None] = (
-        mapped_column(
-            Float,
-            nullable=True,
-        )
-    )
-
-    direction: Mapped[str | None] = (
-        mapped_column(
-            String(40),
-            nullable=True,
-        )
-    )
-
-    probability_up: Mapped[float | None] = (
-        mapped_column(
-            Float,
-            nullable=True,
-        )
-    )
-
-    expected_return: Mapped[float | None] = (
-        mapped_column(
-            Float,
-            nullable=True,
-        )
-    )
-
-    confidence: Mapped[float | None] = (
-        mapped_column(
-            Float,
-            nullable=True,
-        )
-    )
-
-    test_accuracy: Mapped[float | None] = (
-        mapped_column(
-            Float,
-            nullable=True,
-        )
-    )
-
-    return_rmse: Mapped[float | None] = (
-        mapped_column(
-            Float,
-            nullable=True,
-        )
-    )
-
-    model_version: Mapped[str | None] = (
-        mapped_column(
-            String(100),
-            nullable=True,
-        )
-    )
-
-    feature_version: Mapped[str | None] = (
-        mapped_column(
-            String(100),
-            nullable=True,
-        )
-    )
-
-    horizon: Mapped[int | None] = (
-        mapped_column(
-            Integer,
-            nullable=True,
-        )
-    )
-
-    model_agreement: Mapped[float | None] = (
-        mapped_column(
-            Float,
-            nullable=True,
-        )
-    )
-
-    validation_folds: Mapped[int | None] = (
-        mapped_column(
-            Integer,
-            nullable=True,
-        )
-    )
-
-    training_rows: Mapped[int | None] = (
-        mapped_column(
-            Integer,
-            nullable=True,
-        )
-    )
-
-    feature_count: Mapped[int | None] = (
-        mapped_column(
-            Integer,
-            nullable=True,
-        )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
     )
 
 
-class UserPredictionHistory(Base):
+class SharedScan(Base):
 
-    __tablename__ = (
-        "user_prediction_history"
+    __tablename__ = "shared_scans"
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
     )
 
-    id: Mapped[int] = (
-        mapped_column(
-            Integer,
-            primary_key=True,
-        )
+    scan_key: Mapped[str] = mapped_column(
+        String(300),
+        unique=True,
     )
 
-    user_id: Mapped[str] = (
-        mapped_column(
-            String(128),
-            index=True,
-            nullable=False,
-        )
+    result_json: Mapped[str] = mapped_column(
+        Text
     )
 
-    ticker: Mapped[str] = (
-        mapped_column(
-            String(20),
-            index=True,
-            nullable=False,
-        )
-    )
-
-    created_at: Mapped[datetime] = (
-        mapped_column(
-            DateTime,
-            default=datetime.utcnow,
-            nullable=False,
-        )
-    )
-
-    market_date: Mapped[str | None] = (
-        mapped_column(
-            String(30),
-            nullable=True,
-        )
-    )
-
-    price: Mapped[float | None] = (
-        mapped_column(
-            Float,
-            nullable=True,
-        )
-    )
-
-    direction: Mapped[str | None] = (
-        mapped_column(
-            String(40),
-            nullable=True,
-        )
-    )
-
-    probability_up: Mapped[float | None] = (
-        mapped_column(
-            Float,
-            nullable=True,
-        )
-    )
-
-    expected_return: Mapped[float | None] = (
-        mapped_column(
-            Float,
-            nullable=True,
-        )
-    )
-
-    confidence: Mapped[float | None] = (
-        mapped_column(
-            Float,
-            nullable=True,
-        )
-    )
-
-    model_version: Mapped[str | None] = (
-        mapped_column(
-            String(100),
-            nullable=True,
-        )
-    )
-
-    feature_version: Mapped[str | None] = (
-        mapped_column(
-            String(100),
-            nullable=True,
-        )
-    )
-
-    horizon: Mapped[int | None] = (
-        mapped_column(
-            Integer,
-            nullable=True,
-        )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
     )
 
 
-class PredictionCache(Base):
+def init_db():
 
-    __tablename__ = (
-        "prediction_cache"
-    )
-
-    __table_args__ = (
-        UniqueConstraint(
-            "ticker",
-            "market_date",
-            "model_version",
-            "feature_version",
-            "horizon",
-            name="uq_prediction_cache_key",
-        ),
-    )
-
-    id: Mapped[int] = (
-        mapped_column(
-            Integer,
-            primary_key=True,
-        )
-    )
-
-    ticker: Mapped[str] = (
-        mapped_column(
-            String(20),
-            index=True,
-            nullable=False,
-        )
-    )
-
-    market_date: Mapped[str] = (
-        mapped_column(
-            String(30),
-            nullable=False,
-        )
-    )
-
-    model_version: Mapped[str] = (
-        mapped_column(
-            String(100),
-            nullable=False,
-        )
-    )
-
-    feature_version: Mapped[str] = (
-        mapped_column(
-            String(100),
-            nullable=False,
-        )
-    )
-
-    horizon: Mapped[int] = (
-        mapped_column(
-            Integer,
-            nullable=False,
-        )
-    )
-
-    price: Mapped[float | None] = (
-        mapped_column(
-            Float,
-            nullable=True,
-        )
-    )
-
-    direction: Mapped[str | None] = (
-        mapped_column(
-            String(40),
-            nullable=True,
-        )
-    )
-
-    probability_up: Mapped[float | None] = (
-        mapped_column(
-            Float,
-            nullable=True,
-        )
-    )
-
-    expected_return: Mapped[float | None] = (
-        mapped_column(
-            Float,
-            nullable=True,
-        )
-    )
-
-    confidence: Mapped[float | None] = (
-        mapped_column(
-            Float,
-            nullable=True,
-        )
-    )
-
-    validation_accuracy: Mapped[float | None] = (
-        mapped_column(
-            Float,
-            nullable=True,
-        )
-    )
-
-    rmse: Mapped[float | None] = (
-        mapped_column(
-            Float,
-            nullable=True,
-        )
-    )
-
-    model_agreement: Mapped[float | None] = (
-        mapped_column(
-            Float,
-            nullable=True,
-        )
-    )
-
-    validation_folds: Mapped[int | None] = (
-        mapped_column(
-            Integer,
-            nullable=True,
-        )
-    )
-
-    training_rows: Mapped[int | None] = (
-        mapped_column(
-            Integer,
-            nullable=True,
-        )
-    )
-
-    feature_count: Mapped[int | None] = (
-        mapped_column(
-            Integer,
-            nullable=True,
-        )
-    )
-
-    class_probabilities_json: Mapped[str | None] = (
-        mapped_column(
-            Text,
-            nullable=True,
-        )
-    )
-
-    created_at: Mapped[datetime] = (
-        mapped_column(
-            DateTime,
-            default=datetime.utcnow,
-            nullable=False,
-        )
+    Base.metadata.create_all(
+        engine
     )
 
 
-# Creates missing tables without modifying existing columns.
-Base.metadata.create_all(
-    engine
-)
+def _session():
+
+    return Session()
 
 
-def _user() -> str:
-    return current_user_id()
+def add_watch(ticker: str):
 
+    ticker = ticker.upper().strip()
 
-def add_to_watchlist(
-    ticker: str,
-) -> None:
+    session = _session()
 
-    ticker = (
-        ticker
-        .strip()
-        .upper()
-    )
-
-    if not ticker:
-        return
-
-    with SessionLocal() as session:
+    try:
 
         existing = (
             session.query(
                 UserWatchlist
             )
             .filter_by(
-                user_id=_user(),
+                user_id=current_user_id(),
                 ticker=ticker,
             )
             .first()
@@ -591,84 +206,53 @@ def add_to_watchlist(
 
             session.add(
                 UserWatchlist(
-                    user_id=_user(),
+                    user_id=current_user_id(),
                     ticker=ticker,
                 )
             )
 
             session.commit()
 
+    finally:
+        session.close()
 
-def remove_from_watchlist(
-    ticker: str,
-) -> None:
 
-    ticker = (
-        ticker
-        .strip()
-        .upper()
-    )
+def remove_watch(ticker: str):
 
-    with SessionLocal() as session:
+    session = _session()
 
-        row = (
-            session.query(
-                UserWatchlist
-            )
+    try:
+
+        (
+            session.query(UserWatchlist)
             .filter_by(
-                user_id=_user(),
-                ticker=ticker,
+                user_id=current_user_id(),
+                ticker=ticker.upper(),
             )
-            .first()
+            .delete()
         )
 
-        if row:
+        session.commit()
 
-            session.delete(
-                row
-            )
-
-            session.commit()
+    finally:
+        session.close()
 
 
-def is_watched(
-    ticker: str,
-) -> bool:
+def get_watchlist():
 
-    ticker = (
-        ticker
-        .strip()
-        .upper()
-    )
+    session = _session()
 
-    with SessionLocal() as session:
-
-        return (
-            session.query(
-                UserWatchlist
-            )
-            .filter_by(
-                user_id=_user(),
-                ticker=ticker,
-            )
-            .first()
-            is not None
-        )
-
-
-def get_watchlist() -> list[str]:
-
-    with SessionLocal() as session:
+    try:
 
         rows = (
             session.query(
                 UserWatchlist
             )
             .filter_by(
-                user_id=_user()
+                user_id=current_user_id()
             )
             .order_by(
-                UserWatchlist.added_at.desc()
+                UserWatchlist.created_at.desc()
             )
             .all()
         )
@@ -678,218 +262,127 @@ def get_watchlist() -> list[str]:
             for row in rows
         ]
 
-
-def _result_dict(
-    row: UserViewedStock,
-) -> dict:
-
-    return {
-        "ticker": row.ticker,
-        "market_date": row.last_market_date,
-        "price": row.last_price,
-        "signal": row.direction,
-        "direction": row.direction,
-        "probability_up": row.probability_up,
-        "expected_return": row.expected_return,
-        "confidence": row.confidence,
-        "validation_accuracy": row.test_accuracy,
-        "test_accuracy": row.test_accuracy,
-        "rmse": row.return_rmse,
-        "model_version": row.model_version,
-        "feature_version": row.feature_version,
-        "horizon": row.horizon,
-        "model_agreement": row.model_agreement,
-        "validation_folds": row.validation_folds,
-        "training_rows": row.training_rows,
-        "feature_count": row.feature_count,
-        "class_probabilities": {},
-    }
+    finally:
+        session.close()
 
 
-def save_viewed_prediction(
-    ticker: str,
-    result: dict,
-) -> None:
+def add_viewed(ticker: str):
 
-    ticker = (
-        ticker
-        .strip()
-        .upper()
-    )
+    session = _session()
 
-    with SessionLocal() as session:
+    try:
 
-        row = (
-            session.query(
-                UserViewedStock
-            )
-            .filter_by(
-                user_id=_user(),
-                ticker=ticker,
-            )
-            .first()
-        )
-
-        if row is None:
-
-            row = UserViewedStock(
-                user_id=_user(),
-                ticker=ticker,
-            )
-
-            session.add(
-                row
-            )
-
-        row.last_viewed = (
-            datetime.utcnow()
-        )
-
-        row.last_market_date = (
-            result.get(
-                "market_date"
-            )
-        )
-
-        row.last_price = (
-            result.get(
-                "price"
-            )
-        )
-
-        row.direction = (
-            result.get(
-                "signal"
-            )
-        )
-
-        row.probability_up = (
-            result.get(
-                "probability_up"
-            )
-        )
-
-        row.expected_return = (
-            result.get(
-                "expected_return"
-            )
-        )
-
-        row.confidence = (
-            result.get(
-                "confidence"
-            )
-        )
-
-        row.test_accuracy = (
-            result.get(
-                "validation_accuracy"
-            )
-        )
-
-        row.return_rmse = (
-            result.get(
-                "rmse"
-            )
-        )
-
-        row.model_version = (
-            result.get(
-                "model_version"
-            )
-        )
-
-        row.feature_version = (
-            result.get(
-                "feature_version"
-            )
-        )
-
-        row.horizon = (
-            result.get(
-                "horizon"
-            )
-        )
-
-        row.model_agreement = (
-            result.get(
-                "model_agreement"
-            )
-        )
-
-        row.validation_folds = (
-            result.get(
-                "validation_folds"
-            )
-        )
-
-        row.training_rows = (
-            result.get(
-                "training_rows"
-            )
-        )
-
-        row.feature_count = (
-            result.get(
-                "feature_count"
+        session.add(
+            UserViewed(
+                user_id=current_user_id(),
+                ticker=ticker.upper().strip(),
             )
         )
 
         session.commit()
 
+    finally:
+        session.close()
+
 
 def get_recently_viewed(
-    limit: int = 12,
-) -> list[dict]:
+    limit: int = 8,
+):
 
-    with SessionLocal() as session:
+    session = _session()
+
+    try:
 
         rows = (
             session.query(
-                UserViewedStock
+                UserViewed
             )
             .filter_by(
-                user_id=_user()
+                user_id=current_user_id()
             )
             .order_by(
-                UserViewedStock.last_viewed.desc()
+                UserViewed.viewed_at.desc()
             )
-            .limit(limit)
+            .limit(100)
             .all()
         )
 
-        return [
-            _result_dict(row)
-            for row in rows
-        ]
+        seen = []
+
+        for row in rows:
+
+            if row.ticker not in seen:
+
+                seen.append(
+                    row.ticker
+                )
+
+            if len(seen) >= limit:
+                break
+
+        return seen
+
+    finally:
+        session.close()
+
+
+def save_prediction(
+    ticker: str,
+    market_date: str,
+    result: dict,
+):
+
+    session = _session()
+
+    try:
+
+        session.add(
+            UserPrediction(
+                user_id=current_user_id(),
+                ticker=ticker.upper(),
+                market_date=str(
+                    market_date
+                ),
+                model_version=result[
+                    "model_version"
+                ],
+                result_json=json.dumps(
+                    result,
+                    default=str,
+                ),
+            )
+        )
+
+        session.commit()
+
+    finally:
+        session.close()
 
 
 def get_cached_prediction(
     ticker: str,
     market_date: str,
     model_version: str,
-    feature_version: str,
-    horizon: int,
-) -> dict | None:
+):
 
-    ticker = (
-        ticker
-        .strip()
-        .upper()
-    )
+    session = _session()
 
-    with SessionLocal() as session:
+    try:
 
         row = (
             session.query(
-                PredictionCache
+                UserPrediction
             )
             .filter_by(
-                ticker=ticker,
-                market_date=market_date,
+                user_id=current_user_id(),
+                ticker=ticker.upper(),
+                market_date=str(
+                    market_date
+                ),
                 model_version=model_version,
-                feature_version=feature_version,
-                horizon=horizon,
+            )
+            .order_by(
+                UserPrediction.created_at.desc()
             )
             .first()
         )
@@ -897,201 +390,83 @@ def get_cached_prediction(
         if row is None:
             return None
 
-        probabilities = {}
+        return json.loads(
+            row.result_json
+        )
 
-        if row.class_probabilities_json:
-
-            try:
-
-                probabilities = json.loads(
-                    row.class_probabilities_json
-                )
-
-            except Exception:
-
-                probabilities = {}
-
-        return {
-            "ticker": row.ticker,
-            "market_date": row.market_date,
-            "price": row.price,
-            "signal": row.direction,
-            "probability_up": row.probability_up,
-            "expected_return": row.expected_return,
-            "confidence": row.confidence,
-            "validation_accuracy": row.validation_accuracy,
-            "rmse": row.rmse,
-            "model_version": row.model_version,
-            "feature_version": row.feature_version,
-            "horizon": row.horizon,
-            "model_agreement": row.model_agreement,
-            "validation_folds": row.validation_folds,
-            "training_rows": row.training_rows,
-            "feature_count": row.feature_count,
-            "class_probabilities": probabilities,
-        }
+    finally:
+        session.close()
 
 
-def save_prediction_cache(
-    ticker: str,
-    result: dict,
-) -> None:
+def save_scan(
+    scan_key: str,
+    results: list[dict],
+):
 
-    ticker = (
-        ticker
-        .strip()
-        .upper()
-    )
+    session = _session()
 
-    with SessionLocal() as session:
+    try:
 
         row = (
             session.query(
-                PredictionCache
+                SharedScan
             )
             .filter_by(
-                ticker=ticker,
-                market_date=result.get(
-                    "market_date"
-                ),
-                model_version=result.get(
-                    "model_version"
-                ),
-                feature_version=result.get(
-                    "feature_version"
-                ),
-                horizon=result.get(
-                    "horizon"
-                ),
+                scan_key=scan_key
+            )
+            .first()
+        )
+
+        payload = json.dumps(
+            results,
+            default=str,
+        )
+
+        if row is None:
+
+            row = SharedScan(
+                scan_key=scan_key,
+                result_json=payload,
+            )
+
+            session.add(row)
+
+        else:
+
+            row.result_json = payload
+
+            row.created_at = (
+                datetime.now(timezone.utc)
+            )
+
+        session.commit()
+
+    finally:
+        session.close()
+
+
+def get_scan(scan_key: str):
+
+    session = _session()
+
+    try:
+
+        row = (
+            session.query(
+                SharedScan
+            )
+            .filter_by(
+                scan_key=scan_key
             )
             .first()
         )
 
         if row is None:
+            return None
 
-            row = PredictionCache(
-                ticker=ticker,
-                market_date=result.get(
-                    "market_date"
-                ),
-                model_version=result.get(
-                    "model_version"
-                ),
-                feature_version=result.get(
-                    "feature_version"
-                ),
-                horizon=result.get(
-                    "horizon"
-                ),
-            )
-
-            session.add(
-                row
-            )
-
-        row.price = result.get(
-            "price"
+        return json.loads(
+            row.result_json
         )
 
-        row.direction = result.get(
-            "signal"
-        )
-
-        row.probability_up = result.get(
-            "probability_up"
-        )
-
-        row.expected_return = result.get(
-            "expected_return"
-        )
-
-        row.confidence = result.get(
-            "confidence"
-        )
-
-        row.validation_accuracy = result.get(
-            "validation_accuracy"
-        )
-
-        row.rmse = result.get(
-            "rmse"
-        )
-
-        row.model_agreement = result.get(
-            "model_agreement"
-        )
-
-        row.validation_folds = result.get(
-            "validation_folds"
-        )
-
-        row.training_rows = result.get(
-            "training_rows"
-        )
-
-        row.feature_count = result.get(
-            "feature_count"
-        )
-
-        row.class_probabilities_json = json.dumps(
-            result.get(
-                "class_probabilities",
-                {},
-            ),
-            separators=(
-                ",",
-                ":",
-            ),
-        )
-
-        session.commit()
-
-
-def save_prediction_history(
-    ticker: str,
-    result: dict,
-) -> None:
-
-    ticker = (
-        ticker
-        .strip()
-        .upper()
-    )
-
-    with SessionLocal() as session:
-
-        session.add(
-            UserPredictionHistory(
-                user_id=_user(),
-                ticker=ticker,
-                market_date=result.get(
-                    "market_date"
-                ),
-                price=result.get(
-                    "price"
-                ),
-                direction=result.get(
-                    "signal"
-                ),
-                probability_up=result.get(
-                    "probability_up"
-                ),
-                expected_return=result.get(
-                    "expected_return"
-                ),
-                confidence=result.get(
-                    "confidence"
-                ),
-                model_version=result.get(
-                    "model_version"
-                ),
-                feature_version=result.get(
-                    "feature_version"
-                ),
-                horizon=result.get(
-                    "horizon"
-                ),
-            )
-        )
-
-        session.commit()
+    finally:
+        session.close()
