@@ -23,3 +23,15 @@ The release uses a compact PatchTST-style patch-based temporal transformer train
 The default provider is Yahoo Finance through yfinance for prototype/development use. It does not guarantee exchange-grade real-time delivery. For commercial/high-frequency or large-universe deployment, replace the provider implementation with a licensed bulk/streaming provider without changing the UI/model interfaces.
 
 Predictions are probabilistic research outputs, not guarantees or financial advice.
+
+## Production data architecture
+
+- Search order: Alpaca assets -> SEC company ticker registry -> Yahoo search fallback.
+- Market data order: Alpaca -> Yahoo fallback. SEC is metadata/filing infrastructure, not a price feed.
+- Scanner: `scanner_worker.py` is a separate persistent process. Streamlit Community Cloud runs the web app, not an always-on background worker, so deploy the worker separately and point both services at the same PostgreSQL database.
+- Queue/cache: `scan_jobs` and `scan_results` are durable PostgreSQL tables. The web app only queues work and reads completed results.
+- Alpaca real-time feeds can be added to the worker for quote caching; REST historical/quote calls are already supported here.
+
+### Required production secrets
+
+`database_url`, `alpaca_api_key`, `alpaca_api_secret`, `SEC_USER_AGENT_EMAIL`, and OIDC secrets if authentication is enabled. Do not commit real secrets.
