@@ -6,6 +6,7 @@ import streamlit as st
 
 
 def inject_css() -> None:
+
     st.markdown(
         """
         <style>
@@ -53,61 +54,94 @@ def inject_css() -> None:
     )
 
 
-def format_money(value) -> str:
+def format_money(
+    value,
+) -> str:
+
     if value is None:
         return "—"
 
     try:
         return f"${float(value):,.2f}"
+
     except Exception:
         return "—"
 
 
-def format_percent(value, digits: int = 2) -> str:
+def format_percent(
+    value,
+    digits: int = 2,
+) -> str:
+
     if value is None:
         return "—"
 
     try:
-        return f"{float(value):+.{digits}f}%"
+
+        return (
+            f"{float(value):+.{digits}f}%"
+        )
+
     except Exception:
         return "—"
 
 
-def format_probability(value) -> str:
+def format_probability(
+    value,
+) -> str:
+
     if value is None:
         return "—"
 
     try:
+
         value = float(value)
 
         if value <= 1:
             value *= 100
 
         return f"{value:.1f}%"
+
     except Exception:
         return "—"
 
 
-def format_confidence(value) -> str:
+def format_confidence(
+    value,
+) -> str:
+
     if value is None:
         return "—"
 
     try:
+
         value = float(value)
 
         if value <= 1:
             value *= 100
 
         return f"{value:.0f}%"
+
     except Exception:
         return "—"
 
 
-def mini_chart(data: pd.DataFrame) -> None:
-    if data is None or data.empty or "close" not in data.columns:
+def mini_chart(
+    data: pd.DataFrame,
+) -> None:
+
+    if (
+        data is None
+        or data.empty
+        or "close" not in data.columns
+    ):
         return
 
-    chart_data = data["close"].dropna().tail(90)
+    chart_data = (
+        data["close"]
+        .dropna()
+        .tail(90)
+    )
 
     if chart_data.empty:
         return
@@ -120,13 +154,20 @@ def mini_chart(data: pd.DataFrame) -> None:
             y=chart_data.values,
             mode="lines",
             line=dict(width=2),
-            hovertemplate="$%{y:.2f}<extra></extra>",
+            hovertemplate=(
+                "$%{y:.2f}<extra></extra>"
+            ),
         )
     )
 
     fig.update_layout(
         height=115,
-        margin=dict(l=0, r=0, t=5, b=5),
+        margin=dict(
+            l=0,
+            r=0,
+            t=5,
+            b=5,
+        ),
         showlegend=False,
         xaxis=dict(
             visible=False,
@@ -143,25 +184,33 @@ def mini_chart(data: pd.DataFrame) -> None:
         fig,
         use_container_width=True,
         config={
-            "displayModeBar": False,
+            "displayModeBar": False
         },
     )
 
 
-def page_header(title: str, subtitle: str = "") -> None:
+def page_header(
+    title: str,
+    subtitle: str = "",
+) -> None:
+
     st.markdown(
         f'<div class="page-title">{title}</div>',
         unsafe_allow_html=True,
     )
 
     if subtitle:
+
         st.markdown(
             f'<div class="page-subtitle">{subtitle}</div>',
             unsafe_allow_html=True,
         )
 
 
-def signal_badge(signal: str) -> None:
+def signal_badge(
+    signal: str,
+) -> None:
+
     st.markdown(
         f'<span class="signal">{signal}</span>',
         unsafe_allow_html=True,

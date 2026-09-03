@@ -1,0 +1,30 @@
+Statix/
+├── app.py
+├── requirements.txt
+├── .gitignore
+├── .streamlit/
+│   └── secrets.toml.example
+├── pages/
+│   ├── home.py
+│   ├── search.py
+│   ├── stock.py
+│   ├── watchlist.py
+│   └── prediction.py
+└── src/
+    ├── __init__.py
+    ├── auth.py
+    ├── data/
+    │   ├── __init__.py
+    │   ├── market.py
+    │   └── search.py
+    ├── models/
+    │   ├── __init__.py
+    │   ├── features.py
+    │   ├── ensemble.py
+    │   └── backtest.py
+    ├── storage/
+    │   ├── __init__.py
+    │   └── database.py
+    └── ui/
+        ├── __init__.py
+        └── components.py

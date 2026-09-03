@@ -4,65 +4,151 @@ import time
 from typing import Any
 
 import pandas as pd
-import yfinance as yf
 import streamlit as st
+import yfinance as yf
 
 
-DEFAULT_PERIOD = "5y"
+PROVIDER_NAME = (
+    "Yahoo Finance via yfinance"
+)
 
 
-def _clean_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """Normalize yfinance columns into normal OHLCV columns."""
+@st.cache_data(
+    ttl=20,
+    max_entries=500,
+    show_spinner=False,
+)
+def get_quote(
+    ticker: str,
+) -> dict[str, Any]:
 
-    if df is None or df.empty:
-        return pd.DataFrame()
+    ticker = ticker.strip().upper()
 
-    result = df.copy()
+    if not ticker:
+        return {}
 
-    if isinstance(result.columns, pd.MultiIndex):
-        result.columns = result.columns.get_level_values(0)
+    try:
 
-    result.columns = [str(col).strip().lower() for col in result.columns]
-
-    rename_map = {
-        "adj close": "adj_close",
-    }
-
-    result = result.rename(columns=rename_map)
-
-    required = ["open", "high", "low", "close", "volume"]
-
-    for column in required:
-        if column not in result.columns:
-            return pd.DataFrame()
-
-    result = result[required].copy()
-
-    for column in required:
-        result[column] = pd.to_numeric(
-            result[column],
-            errors="coerce",
+        obj = yf.Ticker(
+            ticker
         )
 
-    result = result.dropna(subset=["open", "high", "low", "close"])
-    result = result.sort_index()
-    result = result[~result.index.duplicated(keep="last")]
+        info = obj.fast_info
 
-    return result
+        price = info.get(
+            "last_price"
+        )
+
+        previous = info.get(
+            "previous_close"
+        )
+
+        volume = (
+            info.get("last_volume")
+            or info.get(
+                "regular_market_volume"
+            )
+        )
+
+        # Fallback if fast_info does not provide a price.
+        if price is None:
+
+            history = obj.history(
+                period="2d",
+                interval="1m",
+                auto_adjust=False,
+            )
+
+            if history.empty:
+
+                history = obj.history(
+                    period="5d",
+                    interval="1d",
+                    auto_adjust=False,
+                )
+
+            if not history.empty:
+
+                price = float(
+                    history["Close"].iloc[-1]
+                )
+
+                if volume is None:
+                    volume = float(
+                        history["Volume"].iloc[-1]
+                    )
+
+                if (
+                    previous is None
+                    and len(history) > 1
+                ):
+                    previous = float(
+                        history["Close"].iloc[-2]
+                    )
+
+        change = None
+        change_pct = None
+
+        if (
+            price is not None
+            and previous not in (
+                None,
+                0,
+            )
+        ):
+
+            change = float(
+                price - previous
+            )
+
+            change_pct = float(
+                change
+                / previous
+                * 100
+            )
+
+        return {
+            "ticker": ticker,
+            "price": (
+                float(price)
+                if price is not None
+                else None
+            ),
+            "previous_close": (
+                float(previous)
+                if previous is not None
+                else None
+            ),
+            "change": change,
+            "change_pct": change_pct,
+            "volume": (
+                float(volume)
+                if volume is not None
+                else None
+            ),
+            "provider": PROVIDER_NAME,
+            "updated_at": time.time(),
+        }
+
+    except Exception:
+
+        return {
+            "ticker": ticker,
+            "provider": PROVIDER_NAME,
+            "updated_at": time.time(),
+        }
 
 
-@st.cache_data(ttl=300, show_spinner=False)
+@st.cache_data(
+    ttl=300,
+    max_entries=250,
+    show_spinner=False,
+)
 def get_stock_data(
     ticker: str,
-    period: str = DEFAULT_PERIOD,
+    period: str = "5y",
     interval: str = "1d",
 ) -> pd.DataFrame:
-    """
-    Historical market data.
-
-    This is intentionally separate from quote data so refreshing
-    a live quote never retrains a prediction model.
-    """
 
     ticker = ticker.strip().upper()
 
@@ -70,130 +156,73 @@ def get_stock_data(
         return pd.DataFrame()
 
     try:
-        data = yf.download(
+
+        df = yf.download(
             ticker,
             period=period,
             interval=interval,
-            auto_adjust=True,
+            auto_adjust=False,
             progress=False,
             threads=False,
         )
+
     except Exception:
+
         return pd.DataFrame()
 
-    return _clean_columns(data)
+    if df.empty:
+        return df
 
+    if isinstance(
+        df.columns,
+        pd.MultiIndex,
+    ):
 
-def _safe_float(value: Any) -> float | None:
-    try:
-        if value is None:
-            return None
+        df.columns = [
+            str(c[0]).lower()
+            for c in df.columns
+        ]
 
-        value = float(value)
+    else:
 
-        if pd.isna(value):
-            return None
+        df.columns = [
+            str(c).lower()
+            for c in df.columns
+        ]
 
-        return value
-    except Exception:
-        return None
+    df = df.rename(
+        columns={
+            "adj close": "adj_close",
+        }
+    )
 
+    required = [
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+    ]
 
-@st.cache_data(ttl=20, show_spinner=False)
-def get_quote(ticker: str) -> dict[str, Any]:
-    """
-    Fast quote layer.
+    for column in required:
 
-    Cached briefly so the UI can refresh without repeatedly
-    downloading five years of historical data.
-    """
+        if column not in df.columns:
+            return pd.DataFrame()
 
-    ticker = ticker.strip().upper()
+        df[column] = pd.to_numeric(
+            df[column],
+            errors="coerce",
+        )
 
-    result: dict[str, Any] = {
-        "ticker": ticker,
-        "price": None,
-        "previous_close": None,
-        "change": None,
-        "change_pct": None,
-        "volume": None,
-        "market_state": "Unknown",
-        "updated_at": time.time(),
-        "source": "Yahoo Finance",
-    }
-
-    if not ticker:
-        return result
-
-    try:
-        instrument = yf.Ticker(ticker)
-        info = instrument.fast_info
-
-        price = _safe_float(info.get("last_price"))
-        previous = _safe_float(info.get("previous_close"))
-
-        if price is not None:
-            result["price"] = price
-
-        if previous is not None:
-            result["previous_close"] = previous
-
-        if price is not None and previous not in (None, 0):
-            change = price - previous
-            result["change"] = change
-            result["change_pct"] = (change / previous) * 100
-
-        volume = _safe_float(info.get("last_volume"))
-
-        if volume is not None:
-            result["volume"] = volume
-
-    except Exception:
-        pass
-
-    # Reliable fallback from recent historical data.
-    if result["price"] is None:
-        try:
-            recent = get_stock_data(
-                ticker,
-                period="5d",
-                interval="1d",
-            )
-
-            if not recent.empty:
-                close = recent["close"].dropna()
-
-                if len(close) >= 1:
-                    result["price"] = float(close.iloc[-1])
-
-                if len(close) >= 2:
-                    previous = float(close.iloc[-2])
-                    price = float(close.iloc[-1])
-
-                    result["previous_close"] = previous
-                    result["change"] = price - previous
-
-                    if previous != 0:
-                        result["change_pct"] = (
-                            (price - previous) / previous
-                        ) * 100
-
-                if "volume" in recent.columns:
-                    volume = recent["volume"].dropna()
-
-                    if not volume.empty:
-                        result["volume"] = float(volume.iloc[-1])
-
-        except Exception:
-            pass
-
-    result["updated_at"] = time.time()
-
-    return result
+    return (
+        df
+        .dropna(
+            subset=["close"]
+        )
+        .sort_index()
+    )
 
 
 def clear_market_cache() -> None:
-    """Clear market-data caches."""
-
-    get_stock_data.clear()
     get_quote.clear()
+    get_stock_data.clear()

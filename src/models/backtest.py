@@ -3,7 +3,10 @@ import pandas as pd
 from sklearn.ensemble import (
     HistGradientBoostingClassifier,
 )
-from sklearn.metrics import accuracy_score
+
+from sklearn.metrics import (
+    accuracy_score,
+)
 
 
 def walk_forward_backtest(
@@ -14,9 +17,12 @@ def walk_forward_backtest(
     step=30,
 ):
 
-    if len(training_df) < (
-        min_train + test_size
-    ):
+    required_rows = (
+        min_train
+        + test_size
+    )
+
+    if len(training_df) < required_rows:
 
         return {
             "accuracy": None,
@@ -29,7 +35,10 @@ def walk_forward_backtest(
             feature_columns
         ]
         .replace(
-            [float("inf"), -float("inf")],
+            [
+                float("inf"),
+                -float("inf"),
+            ],
             float("nan"),
         )
         .ffill()
@@ -108,8 +117,12 @@ def walk_forward_backtest(
             records.append(
                 {
                     "date": date,
-                    "actual": int(actual),
-                    "predicted": int(pred),
+                    "actual": int(
+                        actual
+                    ),
+                    "predicted": int(
+                        pred
+                    ),
                 }
             )
 

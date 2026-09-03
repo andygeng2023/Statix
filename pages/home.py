@@ -2,18 +2,18 @@ from __future__ import annotations
 
 import streamlit as st
 
-from src.data.market import get_quote, get_stock_data
+from src.data.market import (
+    get_quote,
+)
 from src.storage.database import (
     get_recently_viewed,
     get_watchlist,
 )
 from src.ui.components import (
-    format_confidence,
     format_money,
     format_percent,
     format_probability,
     inject_css,
-    mini_chart,
     page_header,
 )
 
@@ -21,84 +21,120 @@ from src.ui.components import (
 inject_css()
 
 
-def select_stock(ticker: str) -> None:
-    st.session_state["selected_ticker"] = ticker
-    st.switch_page("pages/prediction.py")
+def select_stock(
+    ticker: str,
+) -> None:
+
+    st.session_state[
+        "selected_ticker"
+    ] = ticker.upper()
+
+    st.switch_page(
+        "pages/stock.py"
+    )
 
 
 page_header(
     "Statix",
-    "Market data, model predictions, and historical context in one dashboard.",
+    "Market data, historical context, and on-demand predictions.",
 )
 
 
-# ---------------------------------------------------------
-# Quick actions
-# ---------------------------------------------------------
+left, middle, right = st.columns(
+    [1, 1, 2]
+)
 
-col1, col2, col3 = st.columns([1, 1, 2])
 
-with col1:
+with left:
+
     if st.button(
         "Search stocks",
         use_container_width=True,
     ):
-        st.switch_page("pages/search.py")
 
-with col2:
+        st.switch_page(
+            "pages/search.py"
+        )
+
+
+with middle:
+
     if st.button(
         "Open watchlist",
         use_container_width=True,
     ):
-        st.switch_page("pages/watchlist.py")
 
+        st.switch_page(
+            "pages/watchlist.py"
+        )
 
-# ---------------------------------------------------------
-# Market pulse
-# ---------------------------------------------------------
 
 st.markdown(
     '<div class="section-title">Market pulse</div>',
     unsafe_allow_html=True,
 )
 
-pulse_symbols = [
-    ("SPY", "S&P 500"),
-    ("QQQ", "Nasdaq 100"),
-    ("DIA", "Dow Jones"),
+
+pulse = [
+    (
+        "SPY",
+        "S&P 500",
+    ),
+    (
+        "QQQ",
+        "Nasdaq 100",
+    ),
+    (
+        "DIA",
+        "Dow Jones",
+    ),
 ]
 
-pulse_cols = st.columns(3)
 
-for column, (ticker, label) in zip(
-    pulse_cols,
-    pulse_symbols,
+cols = st.columns(3)
+
+
+for col, (
+    ticker,
+    label,
+) in zip(
+    cols,
+    pulse,
 ):
-    with column:
-        quote = get_quote(ticker)
 
-        price = quote.get("price")
-        change_pct = quote.get("change_pct")
+    with col:
+
+        quote = get_quote(
+            ticker
+        )
 
         st.metric(
-            label=f"{ticker} · {label}",
-            value=format_money(price),
-            delta=(
-                format_percent(change_pct)
-                if change_pct is not None
+            f"{ticker} · {label}",
+            format_money(
+                quote.get(
+                    "price"
+                )
+            ),
+            (
+                format_percent(
+                    quote.get(
+                        "change_pct"
+                    )
+                )
+                if quote.get(
+                    "change_pct"
+                )
+                is not None
                 else None
             ),
         )
 
 
-# ---------------------------------------------------------
-# Discover
-# ---------------------------------------------------------
-
 st.markdown(
     '<div class="section-title">Discover</div>',
     unsafe_allow_html=True,
 )
+
 
 discover = [
     "AAPL",
@@ -111,25 +147,39 @@ discover = [
     "SPY",
 ]
 
-for row_start in range(0, len(discover), 4):
-    row = discover[row_start:row_start + 4]
 
-    columns = st.columns(4)
+for start in range(
+    0,
+    len(discover),
+    4,
+):
 
-    for column, ticker in zip(
-        columns,
+    row = discover[
+        start:start + 4
+    ]
+
+    cols = st.columns(4)
+
+    for col, ticker in zip(
+        cols,
         row,
     ):
-        with column:
-            quote = get_quote(ticker)
+
+        with col:
+
+            quote = get_quote(
+                ticker
+            )
 
             st.markdown(
                 f"**{ticker}**"
             )
 
-            st.caption(
+            st.write(
                 format_money(
-                    quote.get("price")
+                    quote.get(
+                        "price"
+                    )
                 )
             )
 
@@ -138,42 +188,51 @@ for row_start in range(0, len(discover), 4):
             )
 
             if change is not None:
+
                 st.caption(
-                    format_percent(change)
+                    format_percent(
+                        change
+                    )
                 )
 
             if st.button(
-                "Analyze",
-                key=f"home_{ticker}",
+                "View",
+                key=f"discover_{ticker}",
                 use_container_width=True,
             ):
-                select_stock(ticker)
 
+                select_stock(
+                    ticker
+                )
 
-# ---------------------------------------------------------
-# Watchlist
-# ---------------------------------------------------------
 
 watchlist = get_watchlist()
 
+
 if watchlist:
+
     st.markdown(
         '<div class="section-title">Your watchlist</div>',
         unsafe_allow_html=True,
     )
 
-    watchlist = watchlist[:4]
-
-    columns = st.columns(
-        len(watchlist)
+    cols = st.columns(
+        min(
+            4,
+            len(watchlist),
+        )
     )
 
-    for column, ticker in zip(
-        columns,
-        watchlist,
+    for col, ticker in zip(
+        cols,
+        watchlist[:4],
     ):
-        with column:
-            quote = get_quote(ticker)
+
+        with col:
+
+            quote = get_quote(
+                ticker
+            )
 
             st.markdown(
                 f"**{ticker}**"
@@ -182,13 +241,19 @@ if watchlist:
             st.metric(
                 "Price",
                 format_money(
-                    quote.get("price")
+                    quote.get(
+                        "price"
+                    )
                 ),
                 (
                     format_percent(
-                        quote.get("change_pct")
+                        quote.get(
+                            "change_pct"
+                        )
                     )
-                    if quote.get("change_pct")
+                    if quote.get(
+                        "change_pct"
+                    )
                     is not None
                     else None
                 ),
@@ -199,84 +264,87 @@ if watchlist:
                 key=f"watch_{ticker}",
                 use_container_width=True,
             ):
-                select_stock(ticker)
 
+                select_stock(
+                    ticker
+                )
 
-# ---------------------------------------------------------
-# Recently viewed
-# ---------------------------------------------------------
 
 recent = get_recently_viewed(
     limit=6
 )
 
+
 if recent:
+
     st.markdown(
         '<div class="section-title">Recently viewed</div>',
         unsafe_allow_html=True,
     )
 
-    for row_start in range(
+    for start in range(
         0,
         len(recent),
         3,
     ):
+
         row = recent[
-            row_start:row_start + 3
+            start:start + 3
         ]
 
-        columns = st.columns(3)
+        cols = st.columns(3)
 
-        for column, item in zip(
-            columns,
+        for col, item in zip(
+            cols,
             row,
         ):
-            with column:
-                ticker = item["ticker"]
+
+            with col:
+
+                ticker = item[
+                    "ticker"
+                ]
 
                 st.markdown(
                     f"**{ticker}**"
                 )
 
-                metrics = st.columns(2)
+                st.caption(
+                    "Signal"
+                )
 
-                with metrics[0]:
-                    st.caption("Signal")
-                    st.write(
-                        item["direction"]
-                        or "—"
+                st.write(
+                    item.get(
+                        "direction"
                     )
-
-                with metrics[1]:
-                    st.caption("Up probability")
-                    st.write(
-                        format_probability(
-                            item["probability_up"]
-                        )
-                    )
+                    or "—"
+                )
 
                 st.caption(
-                    f"Expected 5D return: "
-                    f"{format_percent(item['expected_return'] * 100 if item['expected_return'] is not None else None)}"
+                    "Probability up"
+                )
+
+                st.write(
+                    format_probability(
+                        item.get(
+                            "probability_up"
+                        )
+                    )
                 )
 
                 if st.button(
-                    "Open analysis",
-                    key=f"recent_{ticker}_{row_start}",
+                    "Open",
+                    key=f"recent_{ticker}_{start}",
                     use_container_width=True,
                 ):
-                    select_stock(ticker)
 
+                    select_stock(
+                        ticker
+                    )
 
-# ---------------------------------------------------------
-# Empty-state help
-# ---------------------------------------------------------
 
 if not watchlist and not recent:
-    st.divider()
 
     st.info(
-        "Start by searching for a stock or selecting one "
-        "from Discover. Your analyses will appear here "
-        "after you view them."
+        "Search for a stock or select one from Discover."
     )

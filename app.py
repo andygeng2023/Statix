@@ -1,5 +1,8 @@
 import streamlit as st
 
+from src.auth import current_user_name, render_auth_gate
+
+
 st.set_page_config(
     page_title="Statix",
     page_icon="📈",
@@ -12,7 +15,7 @@ st.markdown(
     <style>
     .block-container {
         max-width: 1450px;
-        padding-top: 1.5rem;
+        padding-top: 1.4rem;
         padding-bottom: 3rem;
     }
 
@@ -23,62 +26,77 @@ st.markdown(
     .statix-brand {
         font-size: 1.8rem;
         font-weight: 800;
-        letter-spacing: -0.04em;
-        margin-bottom: 0;
+        letter-spacing: -.04em;
     }
 
     .statix-subtitle {
         color: #888;
         font-size: .85rem;
-        margin-top: -.25rem;
+        margin-top: -.5rem;
     }
 
     .section-title {
-        font-size: 1.25rem;
+        font-size: 1.2rem;
         font-weight: 750;
         margin-top: 1.4rem;
         margin-bottom: .7rem;
-    }
-
-    .small-muted {
-        color: #888;
-        font-size: .82rem;
-    }
-
-    div[data-testid="stMetric"] {
-        padding: .35rem 0;
-    }
-
-    button[kind="secondary"] {
-        border-radius: 10px;
     }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
+render_auth_gate()
+
+
 with st.sidebar:
     st.markdown(
-        """
-        <div class="statix-brand">Statix</div>
-        <div class="statix-subtitle">Market intelligence</div>
-        """,
+        '<div class="statix-brand">Statix</div>',
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        '<div class="statix-subtitle">Market intelligence</div>',
         unsafe_allow_html=True,
     )
 
     st.divider()
 
-    st.caption("Navigation")
-    st.caption("Use Search to select a stock, then open its prediction page.")
+    st.caption(f"User: {current_user_name()}")
+
+    if getattr(st.user, "is_logged_in", False):
+        if st.button(
+            "Log out",
+            use_container_width=True,
+        ):
+            st.logout()
+
 
 pages = {
     "Statix": [
-        st.Page("pages/home.py", title="Home", icon="🏠"),
-        st.Page("pages/search.py", title="Search", icon="🔎"),
-        st.Page("pages/watchlist.py", title="Watchlist", icon="⭐"),
-        st.Page("pages/prediction.py", title="Prediction", icon="📊"),
+        st.Page(
+            "pages/home.py",
+            title="Home",
+        ),
+        st.Page(
+            "pages/search.py",
+            title="Search",
+        ),
+        st.Page(
+            "pages/watchlist.py",
+            title="Watchlist",
+        ),
+        st.Page(
+            "pages/stock.py",
+            title="Stock",
+        ),
+        st.Page(
+            "pages/prediction.py",
+            title="Prediction",
+        ),
     ]
 }
+
 
 pg = st.navigation(pages)
 pg.run()
