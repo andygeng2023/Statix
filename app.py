@@ -6,7 +6,7 @@ st.set_page_config(page_title=APP_NAME, page_icon="📈", layout="wide", initial
 
 st.markdown("""
 <style>
-.block-container{max-width:1400px;padding-top:1.25rem;padding-bottom:3rem}
+.block-container{max-width:1400px;padding-top:5rem;padding-bottom:3rem}
 [data-testid="stSidebar"]{border-right:1px solid rgba(128,128,128,.16)}
 .statix-brand{font-size:1.65rem;font-weight:800;letter-spacing:-.04em}
 .statix-muted{color:#888;font-size:.82rem}
