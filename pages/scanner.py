@@ -1,270 +1,106 @@
-import hashlib
-import json
-
 import streamlit as st
 
-from src.config import SETTINGS
-from src.data.market import get_stock_data
-from src.data.provider import get_provider
-from src.models.ensemble import (
-    train_global_model,
-)
-from src.models.features import (
-    create_features,
-)
-from src.scanner.engine import (
-    scan_universe,
-)
-from src.storage.database import (
-    get_scan,
-    save_scan,
-)
+from src.scanner.engine import scan
 
 
-st.title(
-    "Market Scanner"
-)
-
-st.caption(
-    "Research ranking tool. Results are "
-    "experimental model outputs."
-)
-
-
-provider = get_provider()
-
+st.title("Scanner")
 
 st.write(
-    f"Data provider: **{provider.name}**"
+    "Find stocks with strong model signals."
 )
 
-
-st.subheader(
-    "Scanner Controls"
+st.warning(
+    "A large scan can take time because market data "
+    "providers impose request and rate limits."
 )
-
-
-limit = st.slider(
-    "Results",
-    min_value=5,
-    max_value=100,
-    value=SETTINGS.scanner_default_limit,
-)
-
-
-workers = st.slider(
-    "Parallel workers",
-    min_value=2,
-    max_value=32,
-    value=8,
-)
-
 
 universe_text = st.text_area(
     "Universe",
     value=(
-        "AAPL,MSFT,NVDA,AMZN,GOOGL,META,"
-        "TSLA,AVGO,AMD,NFLX,JPM,V,MA,"
-        "COST,WMT,LLY,UNH,ORCL,CRM"
+        "AAPL,MSFT,NVDA,AMZN,GOOGL,META,TSLA,"
+        "AVGO,JPM,V,MA,UNH,COST,HD,PG,KO,PEP,NFLX,AMD"
     ),
-    help=(
-        "For production, load a maintained "
-        "2,000–10,000 symbol universe from "
-        "your market-data service."
-    ),
+    height=100,
 )
 
-
-tickers = [
-    ticker.strip().upper()
-    for ticker in universe_text.split(",")
-    if ticker.strip()
-]
-
-
-if len(tickers) > SETTINGS.scanner_max_symbols:
-
-    st.error(
-        f"Maximum universe is "
-        f"{SETTINGS.scanner_max_symbols}."
-    )
-
-    st.stop()
-
-
-st.write(
-    f"Universe: **{len(tickers)} symbols**"
+limit = st.slider(
+    "Number of results",
+    min_value=5,
+    max_value=50,
+    value=20,
 )
-
 
 if st.button(
-    "Run Scanner",
+    "Run scan",
     type="primary",
-    use_container_width=True,
 ):
 
-    if not tickers:
+    tickers = [
+        x.strip().upper()
+        for x in universe_text.split(",")
+        if x.strip()
+    ]
 
-        st.warning(
-            "Enter at least one symbol."
-        )
-
-        st.stop()
-
-    with st.status(
-        "Preparing scanner...",
-        expanded=True,
-    ) as status:
-
-        st.write(
-            "Loading market context..."
-        )
-
-        market = get_stock_data(
-            "SPY",
-            "2y",
-            "1d",
-        )
-
-        if market.empty:
-
-            status.update(
-                label="Market context unavailable",
-                state="error",
-            )
-
-            st.stop()
-
-        st.write(
-            "Building global model..."
-        )
-
-        seed_ticker = tickers[0]
-
-        seed_history = get_stock_data(
-            seed_ticker,
-            "2y",
-            "1d",
-        )
-
-        training, _, features = (
-            create_features(
-                seed_history,
-                market,
-                SETTINGS.prediction_horizon,
-            )
-        )
-
-        model = train_global_model(
-            training,
-            tuple(features),
-        )
-
-        st.write(
-            "Scoring universe..."
-        )
-
-        results = scan_universe(
-            tickers=tickers,
-            model=model,
-            market_df=market,
-            max_workers=workers,
-            limit=limit,
-        )
-
-        scan_key = hashlib.sha256(
-            json.dumps(
-                sorted(tickers)
-            ).encode()
-        ).hexdigest()
-
-        save_scan(
-            scan_key,
-            results,
-        )
-
-        st.session_state[
-            "scan_results"
-        ] = results
-
-        status.update(
-            label=(
-                f"Completed · "
-                f"{len(results)} results"
-            ),
-            state="complete",
-        )
-
-
-results = st.session_state.get(
-    "scan_results",
-    [],
-)
-
-
-if not results:
-
-    st.info(
-        "Run a scan to see ranked results."
-    )
-
-    st.stop()
-
-
-st.subheader(
-    "Top Statix Results"
-)
-
-
-header = st.columns(
-    [1, 1.4, 1.5, 1.2, 1.2, 1]
-)
-
-header[0].write("Ticker")
-header[1].write("Price")
-header[2].write("Signal")
-header[3].write("Probability")
-header[4].write("Reliability")
-header[5].write("Open")
-
-
-for index, result in enumerate(
-    results
-):
-
-    columns = st.columns(
-        [1, 1.4, 1.5, 1.2, 1.2, 1]
-    )
-
-    columns[0].write(
-        f"**{result['ticker']}**"
-    )
-
-    columns[1].write(
-        f"${result['price']:,.2f}"
-    )
-
-    columns[2].write(
-        result["signal"]
-    )
-
-    columns[3].write(
-        f"{result['probability'] * 100:.0f}%"
-    )
-
-    columns[4].write(
-        f"{result['reliability'] * 100:.0f}%"
-    )
-
-    if columns[5].button(
-        "Open",
-        key=f"scanner_open_{index}",
+    with st.spinner(
+        f"Scanning {len(tickers)} stocks..."
     ):
 
-        st.session_state[
-            "selected_ticker"
-        ] = result["ticker"]
-
-        st.switch_page(
-            "pages/stock.py"
+        results = scan(
+            tickers,
+            max_results=limit,
         )
+
+    if not results:
+
+        st.info(
+            "No sufficiently reliable signals "
+            "were found."
+        )
+
+    else:
+
+        for result in results:
+
+            with st.container(
+                border=True
+            ):
+
+                c1, c2, c3, c4 = st.columns(4)
+
+                with c1:
+                    st.subheader(
+                        result["ticker"]
+                    )
+
+                with c2:
+                    st.write(
+                        result["signal"]
+                    )
+
+                with c3:
+                    st.write(
+                        f"5D: "
+                        f"{result['return_5d']:.2%}"
+                    )
+
+                with c4:
+                    st.write(
+                        f"Reliability: "
+                        f"{result['confidence']:.1%}"
+                    )
+
+                if st.button(
+                    "Open",
+                    key=(
+                        "open_"
+                        + result["ticker"]
+                    ),
+                ):
+
+                    st.query_params[
+                        "ticker"
+                    ] = result["ticker"]
+
+                    st.switch_page(
+                        "pages/stock.py"
+                    )

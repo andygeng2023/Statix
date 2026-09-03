@@ -1,9 +1,7 @@
 statix/
-│
 ├── app.py
 ├── requirements.txt
 ├── README.md
-├── .gitignore
 │
 ├── .streamlit/
 │   ├── config.toml
@@ -11,42 +9,45 @@ statix/
 │
 ├── pages/
 │   ├── home.py
-│   ├── search.py
+│   ├── stocks.py
 │   ├── stock.py
-│   ├── prediction.py
 │   ├── scanner.py
-│   ├── watchlist.py
-│   └── settings.py
+│   └── watchlist.py
 │
-└── src/
-    ├── __init__.py
-    ├── auth.py
-    │
-    ├── config.py
-    │
-    ├── data/
-    │   ├── __init__.py
-    │   ├── market.py
-    │   ├── search.py
-    │   └── providers/
-    │       ├── __init__.py
-    │       ├── base.py
-    │       └── yahoo.py
-    │
-    ├── models/
-    │   ├── __init__.py
-    │   ├── features.py
-    │   ├── ensemble.py
-    │   └── backtest.py
-    │
-    ├── scanner/
-    │   ├── __init__.py
-    │   └── engine.py
-    │
-    ├── storage/
-    │   ├── __init__.py
-    │   └── database.py
-    │
-    └── ui/
-        ├── __init__.py
-        └── components.py
+├── src/
+│   ├── __init__.py
+│   ├── config.py
+│   ├── auth.py
+│   │
+│   ├── data/
+│   │   ├── __init__.py
+│   │   ├── market.py
+│   │   ├── universe.py
+│   │   └── providers/
+│   │       ├── __init__.py
+│   │       ├── base.py
+│   │       └── yahoo.py
+│   │
+│   ├── models/
+│   │   ├── __init__.py
+│   │   ├── features.py
+│   │   ├── patchtst.py
+│   │   ├── model.py
+│   │   ├── inference.py
+│   │   └── calibration.py
+│   │
+│   ├── scanner/
+│   │   ├── __init__.py
+│   │   └── engine.py
+│   │
+│   ├── storage/
+│   │   ├── __init__.py
+│   │   └── database.py
+│   │
+│   └── ui/
+│       ├── __init__.py
+│       └── components.py
+│
+└── training/
+    ├── build_dataset.py
+    └── train.py

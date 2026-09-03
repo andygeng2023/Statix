@@ -1,158 +1,73 @@
 import streamlit as st
 
-from src.data.market import get_quotes
-from src.data.provider import get_provider
-from src.storage.database import (
-    get_recently_viewed,
-    get_watchlist,
-)
-from src.ui.components import stock_card
+from src.data.market import get_quote
+from src.storage.database import get_recent_views
+from src.ui.components import prediction_card
 
 
 st.title("Statix")
 
-st.caption(
-    "Market intelligence and prediction research"
+st.subheader("Market intelligence")
+
+st.write(
+    "Search a stock, inspect its market data, "
+    "or view the model's current forecast."
 )
 
-provider = get_provider()
+ticker = st.text_input(
+    "Search stock",
+    placeholder="AAPL, MSFT, NVDA...",
+).upper().strip()
 
-st.info(
-    f"Market data: {provider.name}. "
-    "Data freshness depends on the provider."
-)
+if ticker:
 
-
-watchlist = get_watchlist()
-
-recent = get_recently_viewed()
-
-
-st.subheader("Market Pulse")
-
-if watchlist:
-
-    quotes = get_quotes(
-        tuple(watchlist[:8])
-    )
-
-    columns = st.columns(
-        min(
-            4,
-            len(watchlist[:4]),
-        )
-    )
-
-    for column, ticker in zip(
-        columns,
-        watchlist[:4],
+    if st.button(
+        f"Open {ticker}",
+        type="primary",
     ):
-
-        with column:
-
-            quote = quotes.get(
-                ticker,
-                {},
-            )
-
-            stock_card(
-                ticker,
-                quote,
-            )
-
-else:
-
-    st.write(
-        "Your watchlist is empty."
-    )
+        st.query_params["ticker"] = ticker
+        st.switch_page(
+            "pages/stock.py"
+        )
 
 
 st.divider()
 
-
-left, right = st.columns(
-    [1.4, 1]
+recent = get_recent_views(
+    limit=6
 )
-
-
-with left:
-
-    st.subheader(
-        "Statix Scanner"
-    )
-
-    st.write(
-        "Rank a broad market universe "
-        "using the fast prediction and "
-        "reliability pipeline."
-    )
-
-    if st.button(
-        "Open Scanner",
-        type="primary",
-        use_container_width=True,
-    ):
-
-        st.switch_page(
-            "pages/scanner.py"
-        )
-
-
-with right:
-
-    st.subheader(
-        "Quick Analysis"
-    )
-
-    ticker = st.text_input(
-        "Ticker",
-        placeholder="AAPL",
-    )
-
-    if st.button(
-        "Analyze",
-        use_container_width=True,
-    ):
-
-        if ticker.strip():
-
-            st.session_state[
-                "selected_ticker"
-            ] = ticker.upper().strip()
-
-            st.switch_page(
-                "pages/stock.py"
-            )
-
 
 if recent:
 
-    st.divider()
-
     st.subheader(
-        "Recently Viewed"
+        "Recently viewed"
     )
 
     cols = st.columns(
         min(6, len(recent))
     )
 
-    for column, ticker in zip(
+    for col, symbol in zip(
         cols,
         recent,
     ):
 
-        with column:
+        with col:
 
-            if st.button(
-                ticker,
-                use_container_width=True,
-            ):
+            try:
+                quote = get_quote(symbol)
 
-                st.session_state[
-                    "selected_ticker"
-                ] = ticker
-
-                st.switch_page(
-                    "pages/stock.py"
+                price = quote.get(
+                    "price"
                 )
+
+                st.button(
+                    f"{symbol}\n"
+                    f"${price:,.2f}"
+                    if price
+                    else symbol,
+                    key=f"recent_{symbol}",
+                )
+
+            except Exception:
+                st.write(symbol)

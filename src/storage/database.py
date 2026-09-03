@@ -1,16 +1,14 @@
-import json
-import os
-from datetime import datetime, timezone
+from datetime import datetime
 
 from sqlalchemy import (
+    Boolean,
     DateTime,
     Float,
-    Integer,
     String,
-    Text,
-    UniqueConstraint,
     create_engine,
+    select,
 )
+
 from sqlalchemy.orm import (
     DeclarativeBase,
     Mapped,
@@ -19,454 +17,175 @@ from sqlalchemy.orm import (
 )
 
 from src.auth import current_user_id
-from src.config import SETTINGS
-
-
-DB_URL = SETTINGS.database_url
-
-if DB_URL.startswith("postgres://"):
-    DB_URL = DB_URL.replace(
-        "postgres://",
-        "postgresql+psycopg://",
-        1,
-    )
-
-connect_args = {}
-
-if DB_URL.startswith("sqlite"):
-    connect_args = {
-        "check_same_thread": False
-    }
-
-
-engine = create_engine(
-    DB_URL,
-    connect_args=connect_args,
-    pool_pre_ping=True,
-)
-
-Session = sessionmaker(
-    bind=engine,
-    expire_on_commit=False,
-)
+from src.config import DATABASE_URL
 
 
 class Base(DeclarativeBase):
     pass
 
 
-class UserWatchlist(Base):
+class Watchlist(Base):
 
-    __tablename__ = "user_watchlist"
+    __tablename__ = "watchlist"
 
     id: Mapped[int] = mapped_column(
-        Integer,
-        primary_key=True,
+        primary_key=True
     )
 
     user_id: Mapped[str] = mapped_column(
-        String(80),
+        String(128),
         index=True,
     )
 
     ticker: Mapped[str] = mapped_column(
-        String(20)
+        String(20),
+        index=True,
     )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=lambda: datetime.now(timezone.utc),
-    )
-
-    __table_args__ = (
-        UniqueConstraint(
-            "user_id",
-            "ticker",
-            name="uq_user_watchlist",
-        ),
+        default=datetime.utcnow,
     )
 
 
-class UserViewed(Base):
+class ViewedStock(Base):
 
-    __tablename__ = "user_viewed"
+    __tablename__ = "viewed_stock"
 
     id: Mapped[int] = mapped_column(
-        Integer,
-        primary_key=True,
+        primary_key=True
     )
 
     user_id: Mapped[str] = mapped_column(
-        String(80),
+        String(128),
         index=True,
     )
 
     ticker: Mapped[str] = mapped_column(
-        String(20)
+        String(20),
     )
 
     viewed_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=lambda: datetime.now(timezone.utc),
+        default=datetime.utcnow,
     )
 
 
-class UserPrediction(Base):
+engine = create_engine(
+    DATABASE_URL,
+    pool_pre_ping=True,
+)
 
-    __tablename__ = "user_predictions"
+SessionLocal = sessionmaker(
+    bind=engine,
+    expire_on_commit=False,
+)
 
-    id: Mapped[int] = mapped_column(
-        Integer,
-        primary_key=True,
-    )
-
-    user_id: Mapped[str] = mapped_column(
-        String(80),
-        index=True,
-    )
-
-    ticker: Mapped[str] = mapped_column(
-        String(20)
-    )
-
-    market_date: Mapped[str] = mapped_column(
-        String(40)
-    )
-
-    model_version: Mapped[str] = mapped_column(
-        String(100)
-    )
-
-    result_json: Mapped[str] = mapped_column(
-        Text
-    )
-
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=lambda: datetime.now(timezone.utc),
-    )
+Base.metadata.create_all(
+    engine
+)
 
 
-class SharedScan(Base):
+def add_to_watchlist(ticker):
 
-    __tablename__ = "shared_scans"
+    user_id = current_user_id()
 
-    id: Mapped[int] = mapped_column(
-        Integer,
-        primary_key=True,
-    )
+    with SessionLocal() as db:
 
-    scan_key: Mapped[str] = mapped_column(
-        String(300),
-        unique=True,
-    )
-
-    result_json: Mapped[str] = mapped_column(
-        Text
-    )
-
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=lambda: datetime.now(timezone.utc),
-    )
-
-
-def init_db():
-
-    Base.metadata.create_all(
-        engine
-    )
-
-
-def _session():
-
-    return Session()
-
-
-def add_watch(ticker: str):
-
-    ticker = ticker.upper().strip()
-
-    session = _session()
-
-    try:
-
-        existing = (
-            session.query(
-                UserWatchlist
+        existing = db.scalar(
+            select(Watchlist).where(
+                Watchlist.user_id == user_id,
+                Watchlist.ticker == ticker,
             )
-            .filter_by(
-                user_id=current_user_id(),
+        )
+
+        if existing:
+            return
+
+        db.add(
+            Watchlist(
+                user_id=user_id,
                 ticker=ticker,
             )
-            .first()
         )
 
-        if existing is None:
+        db.commit()
 
-            session.add(
-                UserWatchlist(
-                    user_id=current_user_id(),
-                    ticker=ticker,
-                )
+
+def remove_from_watchlist(ticker):
+
+    user_id = current_user_id()
+
+    with SessionLocal() as db:
+
+        row = db.scalar(
+            select(Watchlist).where(
+                Watchlist.user_id == user_id,
+                Watchlist.ticker == ticker,
             )
-
-            session.commit()
-
-    finally:
-        session.close()
-
-
-def remove_watch(ticker: str):
-
-    session = _session()
-
-    try:
-
-        (
-            session.query(UserWatchlist)
-            .filter_by(
-                user_id=current_user_id(),
-                ticker=ticker.upper(),
-            )
-            .delete()
         )
 
-        session.commit()
-
-    finally:
-        session.close()
+        if row:
+            db.delete(row)
+            db.commit()
 
 
 def get_watchlist():
 
-    session = _session()
+    user_id = current_user_id()
 
-    try:
+    with SessionLocal() as db:
 
-        rows = (
-            session.query(
-                UserWatchlist
-            )
-            .filter_by(
-                user_id=current_user_id()
+        rows = db.scalars(
+            select(Watchlist)
+            .where(
+                Watchlist.user_id == user_id
             )
             .order_by(
-                UserWatchlist.created_at.desc()
+                Watchlist.created_at.desc()
             )
-            .all()
-        )
+        ).all()
 
         return [
             row.ticker
             for row in rows
         ]
 
-    finally:
-        session.close()
 
+def record_view(ticker):
 
-def add_viewed(ticker: str):
+    user_id = current_user_id()
 
-    session = _session()
+    with SessionLocal() as db:
 
-    try:
-
-        session.add(
-            UserViewed(
-                user_id=current_user_id(),
-                ticker=ticker.upper().strip(),
+        db.add(
+            ViewedStock(
+                user_id=user_id,
+                ticker=ticker,
             )
         )
 
-        session.commit()
-
-    finally:
-        session.close()
+        db.commit()
 
 
-def get_recently_viewed(
-    limit: int = 8,
-):
+def get_recent_views(limit=10):
 
-    session = _session()
+    user_id = current_user_id()
 
-    try:
+    with SessionLocal() as db:
 
-        rows = (
-            session.query(
-                UserViewed
-            )
-            .filter_by(
-                user_id=current_user_id()
+        rows = db.scalars(
+            select(ViewedStock)
+            .where(
+                ViewedStock.user_id == user_id
             )
             .order_by(
-                UserViewed.viewed_at.desc()
+                ViewedStock.viewed_at.desc()
             )
-            .limit(100)
-            .all()
-        )
+            .limit(limit)
+        ).all()
 
-        seen = []
-
-        for row in rows:
-
-            if row.ticker not in seen:
-
-                seen.append(
-                    row.ticker
-                )
-
-            if len(seen) >= limit:
-                break
-
-        return seen
-
-    finally:
-        session.close()
-
-
-def save_prediction(
-    ticker: str,
-    market_date: str,
-    result: dict,
-):
-
-    session = _session()
-
-    try:
-
-        session.add(
-            UserPrediction(
-                user_id=current_user_id(),
-                ticker=ticker.upper(),
-                market_date=str(
-                    market_date
-                ),
-                model_version=result[
-                    "model_version"
-                ],
-                result_json=json.dumps(
-                    result,
-                    default=str,
-                ),
-            )
-        )
-
-        session.commit()
-
-    finally:
-        session.close()
-
-
-def get_cached_prediction(
-    ticker: str,
-    market_date: str,
-    model_version: str,
-):
-
-    session = _session()
-
-    try:
-
-        row = (
-            session.query(
-                UserPrediction
-            )
-            .filter_by(
-                user_id=current_user_id(),
-                ticker=ticker.upper(),
-                market_date=str(
-                    market_date
-                ),
-                model_version=model_version,
-            )
-            .order_by(
-                UserPrediction.created_at.desc()
-            )
-            .first()
-        )
-
-        if row is None:
-            return None
-
-        return json.loads(
-            row.result_json
-        )
-
-    finally:
-        session.close()
-
-
-def save_scan(
-    scan_key: str,
-    results: list[dict],
-):
-
-    session = _session()
-
-    try:
-
-        row = (
-            session.query(
-                SharedScan
-            )
-            .filter_by(
-                scan_key=scan_key
-            )
-            .first()
-        )
-
-        payload = json.dumps(
-            results,
-            default=str,
-        )
-
-        if row is None:
-
-            row = SharedScan(
-                scan_key=scan_key,
-                result_json=payload,
-            )
-
-            session.add(row)
-
-        else:
-
-            row.result_json = payload
-
-            row.created_at = (
-                datetime.now(timezone.utc)
-            )
-
-        session.commit()
-
-    finally:
-        session.close()
-
-
-def get_scan(scan_key: str):
-
-    session = _session()
-
-    try:
-
-        row = (
-            session.query(
-                SharedScan
-            )
-            .filter_by(
-                scan_key=scan_key
-            )
-            .first()
-        )
-
-        if row is None:
-            return None
-
-        return json.loads(
-            row.result_json
-        )
-
-    finally:
-        session.close()
+        return [
+            row.ticker
+            for row in rows
+        ]

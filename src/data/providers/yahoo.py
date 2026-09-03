@@ -1,163 +1,91 @@
-from datetime import datetime, timezone
-
 import pandas as pd
 import yfinance as yf
 
-from .base import MarketDataProvider
+from src.data.providers.base import MarketDataProvider
 
 
 class YahooProvider(MarketDataProvider):
 
-    name = "Yahoo Finance via yfinance"
-
-    realtime = False
-
-    bulk_quotes = False
-
     def get_quote(self, ticker: str) -> dict:
-
         ticker = ticker.upper().strip()
 
-        empty = {
-            "ticker": ticker,
-            "price": None,
-            "previous_close": None,
-            "change": None,
-            "change_pct": None,
-            "timestamp": datetime.now(timezone.utc),
-            "source": self.name,
-            "fresh": False,
-        }
-
         try:
-            asset = yf.Ticker(ticker)
-
-            info = asset.fast_info
+            t = yf.Ticker(ticker)
+            info = t.fast_info
 
             price = info.get("last_price")
-
             previous = info.get("previous_close")
 
-            if price is not None:
+            if price is None:
+                raise ValueError("No price")
 
-                price = float(price)
+            change = None
+            change_pct = None
 
-                previous = (
-                    float(previous)
-                    if previous is not None
-                    else None
-                )
+            if previous:
+                change = float(price - previous)
+                change_pct = float(change / previous * 100)
 
-                change = (
-                    price - previous
-                    if previous is not None
-                    else None
-                )
-
-                change_pct = (
-                    change / previous * 100
-                    if previous not in (None, 0)
-                    else None
-                )
-
-                return {
-                    "ticker": ticker,
-                    "price": price,
-                    "previous_close": previous,
-                    "change": change,
-                    "change_pct": change_pct,
-                    "timestamp": datetime.now(
-                        timezone.utc
-                    ),
-                    "source": self.name,
-                    "fresh": True,
-                }
+            return {
+                "ticker": ticker,
+                "price": float(price),
+                "previous_close": (
+                    float(previous) if previous else None
+                ),
+                "change": change,
+                "change_pct": change_pct,
+            }
 
         except Exception:
-            pass
-
-        try:
-            history = yf.download(
+            history = self.get_history(
                 ticker,
                 period="5d",
                 interval="1d",
-                auto_adjust=False,
-                progress=False,
-                threads=False,
             )
 
             if history.empty:
-                return empty
+                raise ValueError(f"No market data for {ticker}")
 
-            if isinstance(
-                history.columns,
-                pd.MultiIndex,
-            ):
-                history.columns = (
-                    history.columns
-                    .get_level_values(0)
-                )
-
-            history = history.dropna(
-                subset=["Close"]
-            )
-
-            if history.empty:
-                return empty
-
-            latest = history.iloc[-1]
-
-            price = float(latest["Close"])
+            close = float(history["Close"].iloc[-1])
 
             previous = (
-                float(history.iloc[-2]["Close"])
-                if len(history) >= 2
+                float(history["Close"].iloc[-2])
+                if len(history) > 1
                 else None
             )
 
             change = (
-                price - previous
+                close - previous
                 if previous is not None
                 else None
             )
 
             change_pct = (
                 change / previous * 100
-                if previous not in (None, 0)
+                if previous
                 else None
             )
 
             return {
                 "ticker": ticker,
-                "price": price,
+                "price": close,
                 "previous_close": previous,
                 "change": change,
                 "change_pct": change_pct,
-                "timestamp": datetime.now(
-                    timezone.utc
-                ),
-                "source": self.name,
-                "fresh": False,
             }
 
-        except Exception:
-            return empty
-
-    def get_quotes(
-        self,
-        tickers,
-    ) -> dict[str, dict]:
-
-        symbols = [
-            str(x).upper().strip()
-            for x in tickers
-            if x
-        ]
-
+    def get_quotes(self, tickers: list[str]) -> dict[str, dict]:
         result = {}
 
-        for ticker in symbols:
-            result[ticker] = self.get_quote(ticker)
+        tickers = list(dict.fromkeys(
+            t.upper().strip() for t in tickers
+        ))
+
+        for ticker in tickers:
+            try:
+                result[ticker] = self.get_quote(ticker)
+            except Exception:
+                continue
 
         return result
 
@@ -170,7 +98,7 @@ class YahooProvider(MarketDataProvider):
 
         ticker = ticker.upper().strip()
 
-        data = yf.download(
+        df = yf.download(
             ticker,
             period=period,
             interval=interval,
@@ -179,17 +107,11 @@ class YahooProvider(MarketDataProvider):
             threads=False,
         )
 
-        if data.empty:
+        if df is None or df.empty:
             return pd.DataFrame()
 
-        if isinstance(
-            data.columns,
-            pd.MultiIndex,
-        ):
-            data.columns = (
-                data.columns
-                .get_level_values(0)
-            )
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
 
         required = [
             "Open",
@@ -200,29 +122,22 @@ class YahooProvider(MarketDataProvider):
         ]
 
         missing = [
-            column
-            for column in required
-            if column not in data.columns
+            c for c in required
+            if c not in df.columns
         ]
 
         if missing:
             return pd.DataFrame()
 
-        data = data[required].copy()
+        df = df[required].copy()
 
-        data = data.replace(
-            [float("inf"), float("-inf")],
-            pd.NA,
-        )
+        df.index = pd.to_datetime(df.index)
+        df = df[~df.index.duplicated()]
+        df = df.sort_index()
 
-        data = data.dropna(
-            subset=["Close"]
-        )
+        return df.dropna(subset=["Close"])
 
-        data.index = pd.to_datetime(
-            data.index
-        )
-
-        data = data.sort_index()
-
-        return data
+    def get_universe(self) -> list[str]:
+        # Production deployment should replace this with a maintained
+        # exchange/universe provider.
+        return []

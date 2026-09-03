@@ -1,46 +1,71 @@
 # Statix
 
-Statix is an experimental stock-market prediction and research platform built with Python and Streamlit.
-
-## Features
-
-- Stock search
-- Stock detail pages
-- Historical charts
-- Watchlists
-- Multi-user storage
-- OIDC authentication
-- Machine-learning predictions
-- Five-class prediction system
-- Model probability distribution
-- Reliability scoring
-- Model agreement
-- Validation accuracy
-- Market-context features
-- Market scanner
-- Cached market data
-- Cached model resources
-- PostgreSQL support
-- SQLite local development
+Statix is a machine-learning stock analysis application built with Python,
+Streamlit and PyTorch.
 
 ## Architecture
 
-Statix separates:
+The application separates:
 
 1. Market data
-2. Feature engineering
+2. Feature generation
 3. Model training
 4. Model inference
-5. Reliability scoring
+5. Stock scanning
 6. User storage
-7. Scanner ranking
-8. UI
+7. UI
 
-The expensive model-training path is separated from normal prediction inference.
+The model is trained offline and loaded once for inference.
 
-## Local setup
+## Model
 
-Create a virtual environment:
+Statix uses a PatchTST-style temporal architecture.
+
+Inputs:
+
+- historical returns
+- momentum
+- moving-average relationships
+- volatility
+- RSI
+- ATR
+- MACD
+- Bollinger position
+- volume
+- intraday range
+- gaps
+
+Outputs:
+
+- 1-day expected return
+- 5-day expected return
+- 20-day expected return
+- five-class directional probability
+
+Classes:
+
+- Strong Bearish
+- Bearish
+- Neutral
+- Bullish
+- Strong Bullish
+
+## Training
+
+Build the dataset:
 
 ```bash
-python -m venv .venv
+python training/build_dataset.py
+```
+
+Train:
+
+```bash
+python training/train.py
+```
+
+The resulting model is saved to:
+
+```bash
+artifacts/statix_model.pt
+```

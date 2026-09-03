@@ -2,11 +2,21 @@ import hashlib
 
 import streamlit as st
 
-from src.config import SETTINGS
+from src.config import APP_NAME
 
 
 def auth_configured() -> bool:
-    return SETTINGS.require_auth
+    try:
+        return bool(st.secrets.get("auth"))
+    except Exception:
+        return False
+
+
+def require_auth() -> bool:
+    try:
+        return bool(st.secrets.get("require_auth", False))
+    except Exception:
+        return False
 
 
 def is_logged_in() -> bool:
@@ -17,34 +27,31 @@ def is_logged_in() -> bool:
 
 
 def current_user_id() -> str:
-    if not auth_configured():
+    if not is_logged_in():
         return "local-anonymous"
 
     try:
         issuer = str(st.user.get("iss", ""))
         subject = str(
-            st.user.get(
-                "sub",
-                st.user.get("email", ""),
-            )
+            st.user.get("sub")
+            or st.user.get("email")
+            or st.user.get("name")
+            or ""
         )
 
-        raw = f"{issuer}|{subject}"
-
         return hashlib.sha256(
-            raw.encode("utf-8")
-        ).hexdigest()[:40]
-
+            f"{issuer}:{subject}".encode()
+        ).hexdigest()
     except Exception:
-        return "unknown-user"
+        return "local-anonymous"
 
 
 def current_user_name() -> str:
-    if not auth_configured():
-        return "Local user"
+    if not is_logged_in():
+        return "Local User"
 
     try:
-        return (
+        return str(
             st.user.get("name")
             or st.user.get("email")
             or "User"
@@ -53,41 +60,22 @@ def current_user_name() -> str:
         return "User"
 
 
-def render_auth_gate() -> bool:
-    if not auth_configured():
-        return True
+def render_auth_gate():
+    if not require_auth():
+        return
 
     if is_logged_in():
+        return
 
-        with st.sidebar:
-            st.caption(
-                f"Signed in as {current_user_name()}"
-            )
+    st.title(APP_NAME)
+    st.write("Sign in to continue.")
 
-            st.button(
-                "Sign out",
-                use_container_width=True,
-                on_click=st.logout,
-            )
+    try:
+        st.login()
+    except Exception:
+        st.error(
+            "Authentication is enabled, but the OIDC configuration "
+            "is incomplete."
+        )
 
-        return True
-
-    st.title("Statix")
-
-    st.subheader(
-        "Market prediction research platform"
-    )
-
-    st.write(
-        "Sign in to keep your watchlist, "
-        "view history, and prediction history "
-        "separate from other users."
-    )
-
-    st.button(
-        "Sign in",
-        type="primary",
-        on_click=st.login,
-    )
-
-    return False
+    st.stop()

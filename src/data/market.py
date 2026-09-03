@@ -1,61 +1,51 @@
-import pandas as pd
 import streamlit as st
 
-from src.config import SETTINGS
-from .provider import get_provider
+from src.config import (
+    HISTORY_CACHE_SECONDS,
+    QUOTE_CACHE_SECONDS,
+)
+from src.data.providers.yahoo import YahooProvider
+
+
+_PROVIDER = YahooProvider()
 
 
 @st.cache_data(
-    ttl=SETTINGS.quote_cache_seconds,
-    max_entries=5000,
+    ttl=QUOTE_CACHE_SECONDS,
+    max_entries=20_000,
     show_spinner=False,
-    refresh_mode="background",
 )
 def get_quote(ticker: str) -> dict:
-
-    return get_provider().get_quote(
-        ticker.upper().strip()
-    )
+    return _PROVIDER.get_quote(ticker)
 
 
 @st.cache_data(
-    ttl=SETTINGS.quote_cache_seconds,
-    max_entries=500,
+    ttl=QUOTE_CACHE_SECONDS,
+    max_entries=20_000,
     show_spinner=False,
-    refresh_mode="background",
 )
-def get_quotes(
-    tickers: tuple[str, ...],
-) -> dict:
-
-    return get_provider().get_quotes(
-        tickers
-    )
+def get_quotes(tickers: tuple[str, ...]) -> dict:
+    return _PROVIDER.get_quotes(list(tickers))
 
 
 @st.cache_data(
-    ttl=SETTINGS.history_cache_seconds,
-    max_entries=1000,
+    ttl=HISTORY_CACHE_SECONDS,
+    max_entries=5_000,
     show_spinner=False,
-    refresh_mode="background",
 )
 def get_stock_data(
     ticker: str,
     period: str = "5y",
     interval: str = "1d",
-) -> pd.DataFrame:
-
-    return get_provider().get_history(
-        ticker.upper().strip(),
+):
+    return _PROVIDER.get_history(
+        ticker,
         period,
         interval,
     )
 
 
 def clear_market_cache():
-
     get_quote.clear()
-
     get_quotes.clear()
-
     get_stock_data.clear()

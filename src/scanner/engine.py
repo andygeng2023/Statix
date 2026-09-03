@@ -1,191 +1,100 @@
-from concurrent.futures import (
-    ThreadPoolExecutor,
-    as_completed,
-)
+from concurrent.futures import ThreadPoolExecutor
 
-import pandas as pd
-
-from src.data.market import (
-    get_stock_data,
-)
-from src.models.features import (
-    create_features,
-)
-from src.models.ensemble import (
-    predict_with_model,
-)
+from src.data.market import get_quotes
+from src.data.market import get_stock_data
+from src.models.inference import predict
 
 
-def liquidity_filter(
-    history: pd.DataFrame,
-) -> bool:
+def liquidity_filter(quotes):
 
-    if history.empty:
-        return False
+    result = []
 
-    if len(history) < 220:
-        return False
+    for ticker, quote in quotes.items():
 
-    latest = history.iloc[-1]
+        price = quote.get("price")
 
-    price = float(
-        latest["Close"]
-    )
+        if price is None:
+            continue
 
-    volume = float(
-        latest["Volume"]
-    )
+        if price < 2:
+            continue
 
-    if price < 3:
-        return False
+        result.append(ticker)
 
-    if volume <= 0:
-        return False
-
-    average_volume = float(
-        history["Volume"]
-        .tail(20)
-        .mean()
-    )
-
-    if average_volume <= 0:
-        return False
-
-    return True
+    return result
 
 
-def score_symbol(
-    ticker: str,
-    model,
-    market_df: pd.DataFrame,
-):
+def score_one(ticker):
 
     try:
 
-        ticker = ticker.upper().strip()
-
-        history = get_stock_data(
+        df = get_stock_data(
             ticker,
-            "2y",
-            "1d",
+            period="1y",
+            interval="1d",
         )
 
-        if not liquidity_filter(
-            history
-        ):
+        if df.empty:
             return None
 
-        train, latest, features = (
-            create_features(
-                history,
-                market_df,
-                horizon=5,
-            )
-        )
+        prediction = predict(df)
 
-        result = predict_with_model(
-            model,
-            latest,
-            features,
-        )
+        if not prediction.get("available"):
+            return None
 
-        result.update(
-            {
-                "ticker": ticker,
-                "price": float(
-                    history["Close"].iloc[-1]
-                ),
-                "data_rows": len(history),
-            }
-        )
-
-        return result
+        return {
+            "ticker": ticker,
+            **prediction,
+        }
 
     except Exception:
         return None
 
 
-def rank_results(
-    results: list[dict],
-    limit: int = 25,
-):
+def scan(tickers, max_results=25):
 
-    valid = [
-        result
-        for result in results
-        if result is not None
-    ]
-
-    valid.sort(
-        key=lambda x: (
-            x.get(
-                "reliability",
-                0,
-            ),
-            x.get(
-                "probability",
-                0,
-            ),
-            abs(
-                x.get(
-                    "expected_return",
-                    0,
-                )
-            ),
-        ),
-        reverse=True,
-    )
-
-    return valid[:limit]
-
-
-def scan_universe(
-    tickers,
-    model,
-    market_df,
-    max_workers: int = 8,
-    limit: int = 25,
-):
-
-    symbols = list(
+    tickers = list(
         dict.fromkeys(
-            str(x).upper().strip()
-            for x in tickers
-            if x
+            t.upper()
+            for t in tickers
         )
     )
+
+    # Stage 1: cheap quote filtering.
+    quotes = get_quotes(
+        tuple(tickers)
+    )
+
+    candidates = liquidity_filter(
+        quotes
+    )
+
+    # Stage 2: cap expensive inference.
+    # A production worker should process this
+    # asynchronously in batches.
+    candidates = candidates[:2000]
 
     results = []
 
     with ThreadPoolExecutor(
-        max_workers=max_workers
+        max_workers=8
     ) as executor:
 
-        futures = [
-            executor.submit(
-                score_symbol,
-                ticker,
-                model,
-                market_df,
-            )
-            for ticker in symbols
-        ]
-
-        for future in as_completed(
-            futures
+        for result in executor.map(
+            score_one,
+            candidates,
         ):
 
-            try:
+            if result:
+                results.append(result)
 
-                result = future.result()
-
-                if result is not None:
-                    results.append(result)
-
-            except Exception:
-                continue
-
-    return rank_results(
-        results,
-        limit,
+    # Highest confidence first.
+    results.sort(
+        key=lambda x: (
+            x["confidence"],
+            abs(x["return_5d"]),
+        ),
+        reverse=True,
     )
+
+    return results[:max_results]

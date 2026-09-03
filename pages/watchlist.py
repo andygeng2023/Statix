@@ -1,94 +1,90 @@
 import streamlit as st
 
-from src.data.market import get_quotes
+from src.data.market import get_quote
 from src.storage.database import (
     get_watchlist,
-    remove_watch,
+    remove_from_watchlist,
 )
 
 
-st.title(
-    "Watchlist"
-)
-
+st.title("Watchlist")
 
 watchlist = get_watchlist()
-
 
 if not watchlist:
 
     st.info(
-        "Your watchlist is empty. "
-        "Open a stock and add it."
+        "Your watchlist is empty."
     )
 
     st.stop()
 
 
-quotes = get_quotes(
-    tuple(watchlist)
-)
+for ticker in watchlist:
 
+    quote = None
 
-for index, ticker in enumerate(
-    watchlist
-):
+    try:
+        quote = get_quote(ticker)
+    except Exception:
+        pass
 
-    quote = quotes.get(
-        ticker,
-        {},
-    )
-
-    columns = st.columns(
-        [1.4, 1.4, 1.4, 1]
-    )
-
-    columns[0].write(
-        f"**{ticker}**"
-    )
-
-    price = quote.get(
-        "price"
-    )
-
-    columns[1].write(
-        (
-            f"${price:,.2f}"
-            if price is not None
-            else "—"
-        )
-    )
-
-    change = quote.get(
-        "change_pct"
-    )
-
-    columns[2].write(
-        (
-            f"{change:+.2f}%"
-            if change is not None
-            else "—"
-        )
-    )
-
-    if columns[3].button(
-        "Open",
-        key=f"watch_open_{index}",
+    with st.container(
+        border=True
     ):
 
-        st.session_state[
-            "selected_ticker"
-        ] = ticker
+        c1, c2, c3, c4 = st.columns(4)
 
-        st.switch_page(
-            "pages/stock.py"
-        )
+        with c1:
+            st.subheader(ticker)
 
-    if st.button(
-        "Remove",
-        key=f"watch_remove_{index}",
-    ):
+        with c2:
 
-        remove_watch(ticker)
+            if quote:
+                price = quote.get(
+                    "price"
+                )
 
-        st.rerun()
+                if price is not None:
+                    st.write(
+                        f"${price:,.2f}"
+                    )
+
+        with c3:
+
+            if quote:
+
+                change = quote.get(
+                    "change_pct"
+                )
+
+                if change is not None:
+                    st.write(
+                        f"{change:+.2f}%"
+                    )
+
+        with c4:
+
+            if st.button(
+                "Open",
+                key=f"open_{ticker}",
+            ):
+
+                st.query_params[
+                    "ticker"
+                ] = ticker
+
+                st.switch_page(
+                    "pages/stock.py"
+                )
+
+            if st.button(
+                "Remove",
+                key=f"remove_{ticker}",
+            ):
+
+                remove_from_watchlist(
+                    ticker
+                )
+
+                st.rerun()
