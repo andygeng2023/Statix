@@ -1,31 +1,72 @@
 from __future__ import annotations
-import json, joblib, numpy as np, pandas as pd
+import json
 from pathlib import Path
-from sklearn.ensemble import HistGradientBoostingClassifier, HistGradientBoostingRegressor
-from sklearn.linear_model import LogisticRegression
-from sklearn.preprocessing import StandardScaler
-from sklearn.pipeline import make_pipeline
-from src.config import MODEL_PATH, MODEL_VERSION, FEATURE_VERSION
+import numpy as np
+import torch
+import torch.nn as nn
+import streamlit as st
+from src.config import MODEL_PATH,MODEL_META_PATH,MODEL_VERSION,FEATURE_VERSION,SEQUENCE_LENGTH
 
 CLASS_NAMES=["Strong bearish","Bearish","Neutral","Bullish","Strong bullish"]
 
+
+class PatchTemporalNet(nn.Module):
+    def __init__(self,n_features,patch_len=8,d_model=64,n_heads=4,n_layers=2,dropout=0.12):
+        super().__init__()
+        self.n_features=n_features; self.patch_len=patch_len; self.d_model=d_model
+        self.proj=nn.Linear(n_features*patch_len,d_model)
+        enc=nn.TransformerEncoderLayer(d_model=d_model,nhead=n_heads,dim_feedforward=d_model*2,dropout=dropout,batch_first=True,norm_first=True,activation="gelu")
+        self.encoder=nn.TransformerEncoder(enc,num_layers=n_layers)
+        self.norm=nn.LayerNorm(d_model)
+        self.class_head=nn.Sequential(nn.Linear(d_model,d_model),nn.GELU(),nn.Dropout(dropout),nn.Linear(d_model,5))
+        self.return_head=nn.Sequential(nn.Linear(d_model,d_model//2),nn.GELU(),nn.Linear(d_model//2,1))
+
+    def forward(self,x):
+        # x: [batch, sequence, features]. Trim to complete patches.
+        b,s,f=x.shape; usable=(s//self.patch_len)*self.patch_len
+        x=x[:,:usable,:].reshape(b,usable//self.patch_len,f*self.patch_len)
+        z=self.proj(x)
+        z=self.encoder(z)
+        z=self.norm(z.mean(dim=1))
+        return self.class_head(z),self.return_head(z).squeeze(-1)
+
+
 class StatixModel:
-    def __init__(self, clf_a, clf_b, reg): self.clf_a=clf_a; self.clf_b=clf_b; self.reg=reg
-    def predict(self, X):
-        pa=self.clf_a.predict_proba(X); pb=self.clf_b.predict_proba(X); p=(pa+pb)/2
-        classes=np.arange(5); direction=int(np.argmax(p[0])); expected=float(self.reg.predict(X)[0]); agreement=float(1-np.mean(np.abs(pa-pb))/2)
-        confidence=float(np.max(p[0])); return {"class_index":direction,"direction":CLASS_NAMES[direction],"class_probabilities":{CLASS_NAMES[i]:float(p[0,i]) for i in range(5)},"expected_return":expected,"confidence":confidence,"model_agreement":agreement}
+    def __init__(self,net,feature_columns,mean,std,metrics,temperature=1.0):
+        self.net=net.eval(); self.feature_columns=feature_columns; self.mean=np.asarray(mean); self.std=np.asarray(std); self.metrics=metrics; self.temperature=float(temperature or 1.0)
 
-def train_model(X,y_cls,y_ret):
-    clf_a=HistGradientBoostingClassifier(max_iter=250,max_leaf_nodes=31,learning_rate=.05,l2_regularization=.5,random_state=42)
-    clf_b=make_pipeline(StandardScaler(),LogisticRegression(max_iter=1000,multi_class="auto",C=.5))
-    reg=HistGradientBoostingRegressor(max_iter=250,max_leaf_nodes=31,learning_rate=.05,l2_regularization=.5,random_state=42)
-    clf_a.fit(X,y_cls); clf_b.fit(X,y_cls); reg.fit(X,y_ret); return StatixModel(clf_a,clf_b,reg)
+    def predict(self,Xseq):
+        arr=np.asarray(Xseq,dtype=np.float32)
+        if arr.ndim==2: arr=arr[None,:,:]
+        arr=(arr-self.mean)/(self.std+1e-6)
+        with torch.inference_mode():
+            logits,ret=self.net(torch.from_numpy(arr))
+            probs=torch.softmax(logits/self.temperature,dim=-1).cpu().numpy()[0]
+            expected=float(ret.cpu().numpy()[0])
+        idx=int(np.argmax(probs)); confidence=float(np.max(probs))
+        # Reliability is deliberately conservative: high confidence is not enough by itself.
+        accuracy=float(self.metrics.get("validation_accuracy",0.0))
+        reliability=float(np.clip(confidence*(0.55+0.45*accuracy),0,1))
+        return {"class_index":idx,"direction":CLASS_NAMES[idx],"class_probabilities":{CLASS_NAMES[i]:float(probs[i]) for i in range(5)},"expected_return":expected,"confidence":confidence,"model_agreement":reliability,"reliability":reliability}
 
-def save_model(model, feature_columns, metrics):
+
+def _build_from_payload(payload):
+    cfg=payload["config"]; net=PatchTemporalNet(**cfg); net.load_state_dict(payload["state_dict"])
+    return StatixModel(net,payload["feature_columns"],payload["mean"],payload["std"],payload.get("metrics",{}),payload.get("temperature",1.0))
+
+
+def save_model(net,feature_columns,mean,std,metrics,temperature=1.0):
     MODEL_PATH.parent.mkdir(parents=True,exist_ok=True)
-    joblib.dump({"model":model,"feature_columns":feature_columns,"metrics":metrics,"model_version":MODEL_VERSION,"feature_version":FEATURE_VERSION},MODEL_PATH)
+    payload={"config":{"n_features":len(feature_columns),"patch_len":8,"d_model":64,"n_heads":4,"n_layers":2,"dropout":0.12},"state_dict":net.state_dict(),"feature_columns":feature_columns,"mean":np.asarray(mean).tolist(),"std":np.asarray(std).tolist(),"metrics":metrics,"temperature":float(temperature),"model_version":MODEL_VERSION,"feature_version":FEATURE_VERSION}
+    torch.save(payload,MODEL_PATH)
+    MODEL_META_PATH.write_text(json.dumps({"model_version":MODEL_VERSION,"feature_version":FEATURE_VERSION,"metrics":metrics,"features":feature_columns},indent=2))
 
+
+@st.cache_resource(ttl=21600,max_entries=4,show_spinner=False)
 def load_model():
     if not MODEL_PATH.exists(): return None
-    return joblib.load(MODEL_PATH)
+    try:
+        payload=torch.load(MODEL_PATH,map_location="cpu",weights_only=False)
+        return _build_from_payload(payload)
+    except Exception:
+        return None
