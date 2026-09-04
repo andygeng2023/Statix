@@ -90,6 +90,11 @@ def latest_scan():
 def claim_job():
  if not ensure_db():return None
  with Session() as s:
+  stale=datetime.now(timezone.utc).replace(tzinfo=None)
+  for abandoned in s.query(ScanJob).filter_by(status="running").all():
+   if abandoned.started_at and (stale-abandoned.started_at.replace(tzinfo=None)).total_seconds()>1800:
+    abandoned.status="queued"
+  s.commit()
   if is_sqlite:
    j=s.query(ScanJob).filter_by(status="queued").order_by(ScanJob.id.asc()).first()
   else:

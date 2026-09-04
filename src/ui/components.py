@@ -148,7 +148,7 @@ def card_html(
             <span>{pct(change_pct)}</span>
         </div>
 
-        {f'<div class="statix-chart" style="height:76px;">{spark}</div>' if spark else ""}
+        {f'<div class="statix-chart" style="height:92px;">{spark}</div>' if spark else ""}
 
         {prediction}
     </div>
@@ -163,7 +163,7 @@ def card_row(items: list[dict], key_prefix: str = "card"):
     with st.container(horizontal=True, gap="small"):
         for item in items:
             ticker = str(item["ticker"]).upper()
-            st.html(
+            st.markdown(
                 card_html(
                     ticker=ticker,
                     name=item.get("name"),
@@ -174,7 +174,8 @@ def card_row(items: list[dict], key_prefix: str = "card"):
                     confidence=item.get("confidence"),
                     reliability=item.get("reliability"),
                     expected_return=item.get("expected_return"),
-                )
+                ),
+                unsafe_allow_html=True,
             )
 
 
@@ -230,6 +231,11 @@ def inject_theme_css():
             color:var(--statix-text);
         }
 
+        [data-testid="stSidebar"],
+        [data-testid="stSidebarCollapsedControl"] {
+            display:none;
+        }
+
         .block-container {
             max-width:1500px;
             padding-top:2rem;
@@ -240,16 +246,16 @@ def inject_theme_css():
 
         .statix-card-link {
             display:block;
-            flex:0 0 220px;
-            width:220px;
-            min-width:220px;
+            flex:0 0 232px;
+            width:232px;
+            min-width:232px;
             color:inherit;
             text-decoration:none;
         }
 
         .statix-card {
             width:100%;
-            min-height:190px;
+            min-height:215px;
             box-sizing:border-box;
             padding:16px 18px;
             background:transparent;
@@ -309,7 +315,7 @@ def inject_theme_css():
         }
 
         .statix-chart {
-            height:76px;
+            height:92px;
             margin-top:12px;
             color:var(--statix-accent);
             opacity:.92;
@@ -374,9 +380,9 @@ def inject_theme_css():
         }
 
         [data-testid="stHorizontalBlock"]:has(.statix-card-link) > div {
-            flex:0 0 220px !important;
-            width:220px !important;
-            min-width:220px !important;
+            flex:0 0 232px !important;
+            width:232px !important;
+            min-width:232px !important;
         }
 
         [data-testid="stHorizontalBlock"] {
@@ -390,13 +396,13 @@ def inject_theme_css():
         @media (max-width:700px) {
 
             .statix-card-link {
-                flex-basis:200px;
-                width:200px;
-                min-width:200px;
+                flex-basis:212px;
+                width:212px;
+                min-width:212px;
             }
 
             .statix-card {
-                min-height:175px;
+                min-height:200px;
                 padding:14px 16px;
             }
 

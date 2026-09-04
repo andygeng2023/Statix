@@ -91,7 +91,7 @@ labels = {
 }
 
 
-@st.fragment(run_every="60s")
+@st.fragment(run_every="1s")
 def render_page():
     if page == "home":
         exec(open("src/ui/home_tab.py").read(), globals())
