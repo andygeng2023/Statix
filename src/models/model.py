@@ -50,15 +50,54 @@ class Ensemble:
 
 
 def train_global(X, y, r, features):
-    mean = np.nanmean(X, axis=0)
-    std = np.nanstd(X, axis=0)
-    std[std < 1e-6] = 1.0
-    xn = (X - mean) / (std + 1e-8)
-
-    from sklearn.ensemble import HistGradientBoostingClassifier, HistGradientBoostingRegressor
+    from sklearn.ensemble import (
+        HistGradientBoostingClassifier,
+        HistGradientBoostingRegressor,
+    )
     from sklearn.linear_model import LogisticRegression
     from sklearn.pipeline import make_pipeline
     from sklearn.preprocessing import StandardScaler
+
+    X = np.asarray(X, dtype=np.float64)
+    y = np.asarray(y, dtype=np.int64)
+    r = np.asarray(r, dtype=np.float64)
+
+    # Convert every NaN/Inf to a finite value before calculating
+    # normalization statistics.
+    X = np.nan_to_num(
+        X,
+        nan=0.0,
+        posinf=0.0,
+        neginf=0.0,
+    )
+
+    r = np.nan_to_num(
+        r,
+        nan=0.0,
+        posinf=0.0,
+        neginf=0.0,
+    )
+
+    # Prevent a handful of abnormal market observations from dominating
+    # normalization/model fitting.
+    X = np.clip(X, -20.0, 20.0)
+    r = np.clip(r, -1.0, 1.0)
+
+    mean = np.mean(X, axis=0)
+    std = np.std(X, axis=0)
+
+    mean = np.nan_to_num(mean, nan=0.0, posinf=0.0, neginf=0.0)
+    std = np.nan_to_num(std, nan=1.0, posinf=1.0, neginf=1.0)
+    std[std < 1e-6] = 1.0
+
+    xn = (X - mean) / std
+    xn = np.nan_to_num(
+        xn,
+        nan=0.0,
+        posinf=10.0,
+        neginf=-10.0,
+    )
+    xn = np.clip(xn, -10.0, 10.0)
 
     clf = make_pipeline(
         StandardScaler(),
@@ -69,6 +108,7 @@ def train_global(X, y, r, features):
             random_state=42,
         ),
     )
+
     clf.fit(xn, y)
 
     hgb = HistGradientBoostingClassifier(
@@ -78,6 +118,7 @@ def train_global(X, y, r, features):
         l2_regularization=0.5,
         random_state=42,
     )
+
     hgb.fit(xn, y)
 
     reg = HistGradientBoostingRegressor(
@@ -87,7 +128,9 @@ def train_global(X, y, r, features):
         l2_regularization=0.5,
         random_state=42,
     )
+
     reg.fit(xn, r)
+
     return clf, hgb, reg, mean, std
 
 

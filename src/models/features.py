@@ -79,7 +79,32 @@ def create_features(stock, market=None, horizon=5, target=True):
             default=1,
         ).astype(float)
 
-    clean = d.dropna(
-        subset=cols + (["future_return", "target"] if target else [])
+    required = cols + (["future_return", "target"] if target else [])
+
+    clean = d.replace(
+        [np.inf, -np.inf],
+        np.nan,
+    )
+
+    clean = clean.dropna(
+        subset=required
     ).copy()
+
+    # Remove pathological numerical values before creating training windows.
+    for col in cols:
+        clean[col] = pd.to_numeric(clean[col], errors="coerce")
+
+    clean = clean.dropna(subset=cols).copy()
+
+    clean[cols] = clean[cols].clip(
+        lower=-20.0,
+        upper=20.0,
+    )
+
+    if target:
+        clean["future_return"] = clean["future_return"].clip(
+            lower=-1.0,
+            upper=1.0,
+        )
+
     return clean, cols
