@@ -6,6 +6,11 @@ from src.models.model import load_model
 from src.models.features import create_features
 from src.ui.components import money,pct,card,t
 
+selected = st.session_state.get("selected_ticker")
+
+if selected:
+    st.info(f"Selected stock: {selected}")
+
 search=st.text_input(t("search",lang),placeholder="Apple, NVDA, 000001…")
 if search:
  results=search_stocks(search)
