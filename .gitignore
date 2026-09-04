@@ -1,7 +1,7 @@
+__pycache__/
+*.py[cod]
+.venv/
+.env
 .streamlit/secrets.toml
 statix.db
-.venv/
-__pycache__/
-*.pyc
-.env
-.DS_Store
+*.log

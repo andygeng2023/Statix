@@ -1,49 +1,25 @@
 from __future__ import annotations
-import numpy as np
-import pandas as pd
+import numpy as np, pandas as pd
+FEATURE_VERSION="statix-fast-features-v1"
 
-FEATURE_VERSION="statix-features-v2"
+def _rsi(s,n=14):
+ d=s.diff(); up=d.clip(lower=0); down=-d.clip(upper=0); a=up.ewm(alpha=1/n,adjust=False,min_periods=n).mean(); b=down.ewm(alpha=1/n,adjust=False,min_periods=n).mean(); rs=a/b.replace(0,np.nan); return 100-100/(1+rs)
 
-
-def rsi(s,n=14):
-    d=s.diff(); up=d.clip(lower=0); dn=-d.clip(upper=0)
-    au=up.ewm(alpha=1/n,adjust=False,min_periods=n).mean(); ad=dn.ewm(alpha=1/n,adjust=False,min_periods=n).mean()
-    rs=au/ad.replace(0,np.nan)
-    return 100-100/(1+rs)
-
-
-def create_features(stock,market=None,horizon=5,include_target=True):
-    df=stock.copy().sort_index()
-    close=df["close"].astype(float); vol=df["volume"].astype(float)
-    dr=close.pct_change()
-    for n in [1,2,3,5,10,20,40,60]: df[f"ret_{n}"]=close.pct_change(n)
-    for n in [10,20,50,100,200]: df[f"ma_{n}"]=close/close.rolling(n).mean()-1
-    for n in [5,10,20,40,60]: df[f"vol_{n}"]=dr.rolling(n).std()
-    for n in [7,14,21]: df[f"rsi_{n}"]=rsi(close,n)/100
-    tr=pd.concat([(df.high-df.low),(df.high-close.shift()).abs(),(df.low-close.shift()).abs()],axis=1).max(axis=1)
-    df["atr_pct"]=tr.rolling(14).mean()/close
-    ema12=close.ewm(span=12,adjust=False).mean(); ema26=close.ewm(span=26,adjust=False).mean()
-    macd=ema12-ema26
-    df["macd_pct"]=macd/close; df["macd_signal_pct"]=macd.ewm(span=9,adjust=False).mean()/close
-    mid=close.rolling(20).mean(); sd=close.rolling(20).std()
-    df["bb_width"]=(4*sd/mid); df["bb_pos"]=(close-(mid-2*sd))/(4*sd)
-    df["range_pct"]=(df.high-df.low)/close; df["gap_pct"]=df.open/close.shift()-1
-    df["volume_change"]=vol.pct_change(); vstd=vol.rolling(20).std().replace(0,np.nan)
-    df["volume_z"]=(vol-vol.rolling(20).mean())/vstd
-    if market is not None and not market.empty:
-        m=market["close"].astype(float)
-        df["market_ret_5"]=m.pct_change(5).reindex(df.index).ffill()
-        df["market_ret_20"]=m.pct_change(20).reindex(df.index).ffill()
-        df["relative_ret_5"]=df["ret_5"]-df["market_ret_5"]
-        df["relative_ret_20"]=df["ret_20"]-df["market_ret_20"]
-    else:
-        df["market_ret_5"]=0.0; df["market_ret_20"]=0.0
-        df["relative_ret_5"]=df["ret_5"]; df["relative_ret_20"]=df["ret_20"]
-    feature_cols=[c for c in df.columns if c not in {"open","high","low","close","volume","future_return","target"}]
-    if include_target:
-        future=close.shift(-horizon)/close-1
-        df["future_return"]=future
-        # Volatility-aware five-class target. Thresholds are intentionally modest.
-        df["target"]=pd.cut(future,[-np.inf,-0.03,-0.005,0.005,0.03,np.inf],labels=[0,1,2,3,4]).astype("float")
-    clean=df.dropna(subset=feature_cols+(["target","future_return"] if include_target else [])).copy()
-    return clean,feature_cols
+def create_features(stock,market=None,horizon=5,target=True):
+ d=stock.copy().sort_index(); c=d.close.astype(float); v=d.volume.astype(float); r=c.pct_change()
+ for n in [1,2,3,5,10,20,40,60]: d[f"ret_{n}"]=c.pct_change(n)
+ for n in [10,20,50,100,200]: d[f"ma_{n}"]=c/c.rolling(n).mean()-1
+ for n in [5,10,20,40,60]: d[f"vol_{n}"]=r.rolling(n).std()
+ for n in [7,14,21]: d[f"rsi_{n}"]=_rsi(c,n)/100
+ tr=pd.concat([d.high-d.low,(d.high-c.shift()).abs(),(d.low-c.shift()).abs()],axis=1).max(axis=1); d["atr_pct"]=tr.rolling(14).mean()/c
+ e12=c.ewm(span=12,adjust=False).mean(); e26=c.ewm(span=26,adjust=False).mean(); mac=e12-e26; d["macd_pct"]=mac/c; d["macd_signal_pct"]=mac.ewm(span=9,adjust=False).mean()/c
+ mid=c.rolling(20).mean(); sd=c.rolling(20).std(); d["bb_width"]=4*sd/mid; d["bb_pos"]=(c-(mid-2*sd))/(4*sd); d["range_pct"]=(d.high-d.low)/c; d["gap_pct"]=d.open/c.shift()-1
+ vm=v.rolling(20).mean(); vs=v.rolling(20).std().replace(0,np.nan); d["volume_change"]=v.pct_change(); d["volume_z"]=(v-vm)/vs
+ if market is not None and not market.empty:
+  m=market.close.astype(float); d["market_ret_5"]=m.pct_change(5).reindex(d.index).ffill(); d["market_ret_20"]=m.pct_change(20).reindex(d.index).ffill()
+ else: d["market_ret_5"]=0.; d["market_ret_20"]=0.
+ d["relative_ret_5"]=d.ret_5-d.market_ret_5; d["relative_ret_20"]=d.ret_20-d.market_ret_20
+ cols=[c for c in d.columns if c not in {"open","high","low","close","volume","future_return","target"}]
+ if target:
+  d["future_return"]=c.shift(-horizon)/c-1; d["target"]=pd.cut(d.future_return,[-np.inf,-.03,-.005,.005,.03,np.inf],labels=False).astype(float)
+ clean=d.dropna(subset=cols+(["future_return","target"] if target else [])).copy(); return clean,cols

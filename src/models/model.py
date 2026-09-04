@@ -1,72 +1,37 @@
 from __future__ import annotations
-import json
-from pathlib import Path
-import numpy as np
-import torch
-import torch.nn as nn
-import streamlit as st
-from src.config import MODEL_PATH,MODEL_META_PATH,MODEL_VERSION,FEATURE_VERSION,SEQUENCE_LENGTH
-
+import json, numpy as np, joblib, streamlit as st
+from sklearn.ensemble import HistGradientBoostingClassifier, HistGradientBoostingRegressor
+from sklearn.linear_model import LogisticRegression
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
+from src.config import MODEL_PATH,MODEL_META_PATH
 CLASS_NAMES=["Strong bearish","Bearish","Neutral","Bullish","Strong bullish"]
-
-
-class PatchTemporalNet(nn.Module):
-    def __init__(self,n_features,patch_len=8,d_model=64,n_heads=4,n_layers=2,dropout=0.12):
-        super().__init__()
-        self.n_features=n_features; self.patch_len=patch_len; self.d_model=d_model
-        self.proj=nn.Linear(n_features*patch_len,d_model)
-        enc=nn.TransformerEncoderLayer(d_model=d_model,nhead=n_heads,dim_feedforward=d_model*2,dropout=dropout,batch_first=True,norm_first=True,activation="gelu")
-        self.encoder=nn.TransformerEncoder(enc,num_layers=n_layers)
-        self.norm=nn.LayerNorm(d_model)
-        self.class_head=nn.Sequential(nn.Linear(d_model,d_model),nn.GELU(),nn.Dropout(dropout),nn.Linear(d_model,5))
-        self.return_head=nn.Sequential(nn.Linear(d_model,d_model//2),nn.GELU(),nn.Linear(d_model//2,1))
-
-    def forward(self,x):
-        # x: [batch, sequence, features]. Trim to complete patches.
-        b,s,f=x.shape; usable=(s//self.patch_len)*self.patch_len
-        x=x[:,:usable,:].reshape(b,usable//self.patch_len,f*self.patch_len)
-        z=self.proj(x)
-        z=self.encoder(z)
-        z=self.norm(z.mean(dim=1))
-        return self.class_head(z),self.return_head(z).squeeze(-1)
-
+MODEL_VERSION="statix-global-hgb-v2"
 
 class StatixModel:
-    def __init__(self,net,feature_columns,mean,std,metrics,temperature=1.0):
-        self.net=net.eval(); self.feature_columns=feature_columns; self.mean=np.asarray(mean); self.std=np.asarray(std); self.metrics=metrics; self.temperature=float(temperature or 1.0)
+ def __init__(self,clf,reg,features,mean,std,metrics): self.clf=clf; self.reg=reg; self.feature_columns=features; self.mean=np.asarray(mean); self.std=np.asarray(std); self.metrics=metrics
+ def predict(self,X):
+  x=(np.asarray(X,dtype=float)-self.mean)/(self.std+1e-8); probs=self.clf.predict_proba(x)[0]; idx=int(np.argmax(probs)); conf=float(probs[idx]); ret=float(self.reg.predict(x[-1:].reshape(1,-1))[0]); acc=float(self.metrics.get("validation_accuracy",0)); rel=float(np.clip(.55*conf+.45*acc,0,1));
+  return {"direction":CLASS_NAMES[idx],"class_probabilities":{CLASS_NAMES[i]:float(probs[i]) for i in range(len(CLASS_NAMES))},"confidence":conf,"reliability":rel,"expected_return":ret}
 
-    def predict(self,Xseq):
-        arr=np.asarray(Xseq,dtype=np.float32)
-        if arr.ndim==2: arr=arr[None,:,:]
-        arr=(arr-self.mean)/(self.std+1e-6)
-        with torch.inference_mode():
-            logits,ret=self.net(torch.from_numpy(arr))
-            probs=torch.softmax(logits/self.temperature,dim=-1).cpu().numpy()[0]
-            expected=float(ret.cpu().numpy()[0])
-        idx=int(np.argmax(probs)); confidence=float(np.max(probs))
-        # Reliability is deliberately conservative: high confidence is not enough by itself.
-        accuracy=float(self.metrics.get("validation_accuracy",0.0))
-        reliability=float(np.clip(confidence*(0.55+0.45*accuracy),0,1))
-        return {"class_index":idx,"direction":CLASS_NAMES[idx],"class_probabilities":{CLASS_NAMES[i]:float(probs[i]) for i in range(5)},"expected_return":expected,"confidence":confidence,"model_agreement":reliability,"reliability":reliability}
+def train_global(X,y,r,features):
+ mean=np.nanmean(X,axis=0); std=np.nanstd(X,axis=0); std[std<1e-6]=1; xn=(X-mean)/(std+1e-8)
+ clf=make_pipeline(StandardScaler(),LogisticRegression(max_iter=800,multi_class="auto")); clf.fit(xn,y)
+ hgb=HistGradientBoostingClassifier(max_iter=180,learning_rate=.055,max_leaf_nodes=31,l2_regularization=.3,random_state=42); hgb.fit(xn,y)
+ reg=HistGradientBoostingRegressor(max_iter=180,learning_rate=.055,max_leaf_nodes=31,l2_regularization=.3,random_state=42); reg.fit(xn,r)
+ return clf, hgb, reg, mean, std
 
+class Ensemble:
+ def __init__(self,logit,hgb,reg,features,mean,std,metrics): self.logit=logit; self.hgb=hgb; self.reg=reg; self.feature_columns=features; self.mean=mean; self.std=std; self.metrics=metrics
+ def predict(self,X):
+  x=(np.asarray(X,dtype=float)-self.mean)/(self.std+1e-8); p=(self.logit.predict_proba(x)+self.hgb.predict_proba(x))/2; idx=int(np.argmax(p[0])); conf=float(p[0,idx]); ret=float(self.reg.predict(x[-1:].reshape(1,-1))[0]); acc=float(self.metrics.get("validation_accuracy",0)); rel=float(np.clip(.55*conf+.45*acc,0,1)); return {"direction":CLASS_NAMES[idx],"class_probabilities":{CLASS_NAMES[i]:float(p[0,i]) for i in range(5)},"confidence":conf,"reliability":rel,"expected_return":ret}
 
-def _build_from_payload(payload):
-    cfg=payload["config"]; net=PatchTemporalNet(**cfg); net.load_state_dict(payload["state_dict"])
-    return StatixModel(net,payload["feature_columns"],payload["mean"],payload["std"],payload.get("metrics",{}),payload.get("temperature",1.0))
+def save_model(logit,hgb,reg,features,mean,std,metrics):
+ MODEL_PATH.parent.mkdir(parents=True,exist_ok=True); joblib.dump({"logit":logit,"hgb":hgb,"reg":reg,"features":features,"mean":mean,"std":std,"metrics":metrics,"version":MODEL_VERSION},MODEL_PATH); MODEL_META_PATH.write_text(json.dumps({"model_version":MODEL_VERSION,"metrics":metrics,"features":features},indent=2))
 
-
-def save_model(net,feature_columns,mean,std,metrics,temperature=1.0):
-    MODEL_PATH.parent.mkdir(parents=True,exist_ok=True)
-    payload={"config":{"n_features":len(feature_columns),"patch_len":8,"d_model":64,"n_heads":4,"n_layers":2,"dropout":0.12},"state_dict":net.state_dict(),"feature_columns":feature_columns,"mean":np.asarray(mean).tolist(),"std":np.asarray(std).tolist(),"metrics":metrics,"temperature":float(temperature),"model_version":MODEL_VERSION,"feature_version":FEATURE_VERSION}
-    torch.save(payload,MODEL_PATH)
-    MODEL_META_PATH.write_text(json.dumps({"model_version":MODEL_VERSION,"feature_version":FEATURE_VERSION,"metrics":metrics,"features":feature_columns},indent=2))
-
-
-@st.cache_resource(ttl=21600,max_entries=4,show_spinner=False)
+@st.cache_resource(ttl=86400,show_spinner=False)
 def load_model():
-    if not MODEL_PATH.exists(): return None
-    try:
-        payload=torch.load(MODEL_PATH,map_location="cpu",weights_only=False)
-        return _build_from_payload(payload)
-    except Exception:
-        return None
+ if not MODEL_PATH.exists():return None
+ try:
+  p=joblib.load(MODEL_PATH); return Ensemble(p["logit"],p["hgb"],p["reg"],p["features"],np.asarray(p["mean"]),np.asarray(p["std"]),p["metrics"])
+ except Exception:return None

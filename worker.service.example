@@ -1,4 +1,13 @@
-# Generic process definition for a host that supports long-running workers.
-# Set the environment variables from .env.example in your host's secret manager.
-command = "python scanner_worker.py"
-restart = "always"
+[Unit]
+Description=Statix persistent scanner worker
+After=network.target
+
+[Service]
+WorkingDirectory=/opt/statix
+EnvironmentFile=/opt/statix/.env
+ExecStart=/opt/statix/.venv/bin/python scanner_worker.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

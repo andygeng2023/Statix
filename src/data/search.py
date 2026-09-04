@@ -1,98 +1,59 @@
 from __future__ import annotations
-import difflib
-import os
-import requests
+import difflib, os, requests
+import pandas as pd
 import streamlit as st
+from src.data.providers import quantdash_cfg, validate_symbol
+from src.config import SEARCH_TTL
+SEC_URL="https://www.sec.gov/files/company_tickers_exchange.json"
 
-YAHOO_SEARCH = "https://query1.finance.yahoo.com/v1/finance/search"
-SEC_TICKERS = "https://www.sec.gov/files/company_tickers.json"
-ALPACA_ASSETS = "https://api.alpaca.markets/v2/assets"
+def _sec_headers():
+    try: email=st.secrets.get("SEC_USER_AGENT_EMAIL","you@example.com")
+    except Exception: email=os.getenv("SEC_USER_AGENT_EMAIL","you@example.com")
+    return {"User-Agent":f"Statix/2.0 {email}","Accept-Encoding":"gzip, deflate"}
 
-
-def _headers():
-    email = os.getenv("SEC_USER_AGENT_EMAIL", "statix@example.com")
-    return {"User-Agent": f"Statix/1.0 {email}", "Accept-Encoding": "gzip, deflate"}
-
-
-@st.cache_data(ttl=86400, max_entries=2, show_spinner=False)
-def _sec_universe():
+@st.cache_data(ttl=86400,show_spinner=False)
+def sec_universe():
     try:
-        r = requests.get(SEC_TICKERS, headers=_headers(), timeout=15)
-        r.raise_for_status()
-        data = r.json()
-        out=[]
-        for x in data.values():
-            sym=str(x.get("ticker") or "").upper().strip()
-            name=str(x.get("title") or "").strip()
-            cik=str(x.get("cik_str") or "")
-            if sym and name:
-                out.append({"symbol":sym,"name":name,"exchange":"SEC","type":"EQUITY","cik":cik})
-        return out
-    except Exception:
-        return []
+        r=requests.get(SEC_URL,headers=_sec_headers(),timeout=15); r.raise_for_status(); d=r.json(); rows=d.get("data",[])
+        return pd.DataFrame([{"symbol":str(x[0]).upper(),"name":str(x[1]),"exchange":str(x[2] or "")} for x in rows if len(x)>=3])
+    except Exception:return pd.DataFrame(columns=["symbol","name","exchange"])
 
-
-@st.cache_data(ttl=86400, max_entries=2, show_spinner=False)
-def _alpaca_assets():
-    key=os.getenv("APCA_API_KEY_ID")
-    secret=os.getenv("APCA_API_SECRET_KEY")
+def _qd_search(q):
+    base,key=quantdash_cfg()
+    if not base:return []
     try:
         import streamlit as st
-        key=st.secrets.get("alpaca_api_key", key)
-        secret=st.secrets.get("alpaca_api_secret", secret)
-    except Exception:
-        pass
-    if not key or not secret:
-        return []
+        path=st.secrets.get("quantdash_search_path","/v1/search")
+        h={"Authorization":f"Bearer {key}"} if key else {}
+        r=requests.get(base+path,params={"q":q},headers=h,timeout=8); r.raise_for_status(); d=r.json(); rows=d.get("data",d.get("results",[]))
+        return [{"symbol":str(x.get("symbol",x.get("ticker",""))).upper(),"name":x.get("name",x.get("description",x.get("symbol",""))),"exchange":x.get("exchange","")} for x in rows if x.get("symbol") or x.get("ticker")]
+    except Exception:return []
+
+def _yahoo_search(q):
     try:
-        r=requests.get(ALPACA_ASSETS, headers={"APCA-API-KEY-ID":str(key),"APCA-API-SECRET-KEY":str(secret)}, params={"status":"active","asset_class":"us_equity"}, timeout=15)
-        r.raise_for_status()
-        return [{"symbol":str(x.get("symbol") or "").upper(),"name":x.get("name") or x.get("symbol"),"exchange":x.get("exchange") or "","type":"EQUITY"}
-                for x in r.json() if x.get("tradable", True)]
-    except Exception:
-        return []
+        r=requests.get("https://query1.finance.yahoo.com/v1/finance/search",params={"q":q,"quotesCount":12,"newsCount":0},timeout=10); r.raise_for_status();
+        return [{"symbol":x.get("symbol",""),"name":x.get("longname") or x.get("shortname") or x.get("symbol",""),"exchange":x.get("exchange",""),"type":x.get("quoteType","")} for x in r.json().get("quotes",[]) if x.get("symbol")]
+    except Exception:return []
 
-
-def _rank(items, q, limit):
-    q=q.lower().strip()
-    def score(x):
-        s=x["symbol"].lower(); n=x["name"].lower()
-        exact = 1.0 if s == q else 0.0
-        prefix = 0.65 if s.startswith(q) else 0.0
-        name_prefix = 0.35 if n.startswith(q) else 0.0
-        ratio=max(difflib.SequenceMatcher(None,q,s).ratio(), difflib.SequenceMatcher(None,q,n[:max(len(q),1)]).ratio())
-        return exact+prefix+name_prefix+ratio
-    return sorted(items,key=score,reverse=True)[:limit]
-
-
-@st.cache_data(ttl=1800, max_entries=300, show_spinner=False)
-def search_stocks(query, limit=12):
-    q=str(query).strip()
-    if not q:
-        return []
-    merged={}
-    # Local SEC data is deterministic and avoids Yahoo's intermittent search endpoint failures.
-    for x in _alpaca_assets()+_sec_universe():
-        if not x.get("symbol"): continue
-        sym=x["symbol"].upper()
-        if q.lower() in sym.lower() or q.lower() in str(x.get("name","")).lower():
-            merged[sym]=x
-    if merged:
-        return _rank(list(merged.values()),q,limit)
-    # Yahoo is the third fallback for names not present in SEC/Alpaca results.
-    try:
-        r=requests.get(YAHOO_SEARCH, params={"q":q,"quotesCount":max(limit*3,30),"newsCount":0}, timeout=8, headers={"User-Agent":"Statix/1.0"})
-        r.raise_for_status()
-        out=[]
-        for x in r.json().get("quotes",[]):
-            if x.get("quoteType") not in {"EQUITY","ETF","MUTUALFUND"}: continue
-            sym=str(x.get("symbol") or "").upper()
-            if sym and sym not in merged:
-                merged[sym]={"symbol":sym,"name":x.get("longname") or x.get("shortname") or sym,"exchange":x.get("exchange") or "","type":x.get("quoteType")}
-        out=list(merged.values())
-        if out: return _rank(out,q,limit)
-    except Exception:
-        pass
-    return _rank(list(merged.values()),q,limit)
-
-search_symbols=search_stocks
+@st.cache_data(ttl=SEARCH_TTL,max_entries=500,show_spinner=False)
+def search_stocks(query):
+    q=query.strip();
+    if not q:return []
+    rows=[]; seen=set()
+    for x in _qd_search(q)+_yahoo_search(q):
+        s=x.get("symbol","").upper()
+        if s and s not in seen: seen.add(s); rows.append(x)
+    sec=sec_universe()
+    if not sec.empty:
+        qq=q.lower(); mask=sec.symbol.str.lower().str.contains(qq,na=False)|sec.name.str.lower().str.contains(qq,na=False)
+        for _,r in sec[mask].head(15).iterrows():
+            s=r.symbol
+            if s not in seen: seen.add(s); rows.append({"symbol":s,"name":r.name,"exchange":r.exchange,"type":"EQUITY"})
+    if not rows and len(q)<=12:
+        syms=sec.symbol.tolist() if not sec.empty else []
+        for s in difflib.get_close_matches(q.upper(),syms,n=10,cutoff=.55): rows.append({"symbol":s,"name":s,"exchange":"","type":"EQUITY"})
+    # Last-resort exact-symbol validation prevents a provider outage from producing
+    # a misleading empty search for a valid ticker such as AAPL or MSFT.
+    if not rows and q.replace(".","").replace("-","").isalnum() and validate_symbol(q.upper()):
+        rows.append({"symbol":q.upper(),"name":q.upper(),"exchange":"","type":"EQUITY"})
+    return rows[:20]
