@@ -1,10 +1,22 @@
-```python
+
 import streamlit as st
 
 from src.data.market import quote
-from src.storage.database import get_watchlist
+from src.storage.database import get_settings, get_watchlist
 from src.ui.components import money, pct, t
 
+
+# ---------------------------------------------------------
+# Settings / language
+# ---------------------------------------------------------
+
+settings = get_settings()
+lang = settings.get("language", "en")
+
+
+# ---------------------------------------------------------
+# Page
+# ---------------------------------------------------------
 
 st.markdown("# Home")
 st.caption("A compact view of the market and your saved symbols.")
@@ -20,6 +32,24 @@ def open_in_stocks(ticker, key_prefix):
         st.session_state["stocks_notice"] = ticker
 
 
+def show_quote_card(container, ticker, key_prefix):
+    q = quote(ticker)
+
+    with container:
+        st.metric(
+            ticker,
+            money(q.get("price")),
+            pct(q.get("change_pct")),
+        )
+
+        provider = q.get("provider", "—")
+        updated_at = q.get("updated_at", "—")
+
+        st.caption(f"{provider} · {updated_at}")
+
+        open_in_stocks(ticker, key_prefix)
+
+
 # ---------------------------------------------------------
 # Short Discover section
 # ---------------------------------------------------------
@@ -28,17 +58,11 @@ st.subheader(t("discover_short", lang))
 
 cols = st.columns(4)
 
-for c, ticker in zip(cols, ["AAPL", "MSFT", "NVDA", "AMZN"]):
-    q = quote(ticker)
-
-    c.metric(
-        ticker,
-        money(q.get("price")),
-        pct(q.get("change_pct")),
-    )
-
-    with c:
-        open_in_stocks(ticker, "home_discover")
+for c, ticker in zip(
+    cols,
+    ["AAPL", "MSFT", "NVDA", "AMZN"],
+):
+    show_quote_card(c, ticker, "home_discover")
 
 
 # ---------------------------------------------------------
@@ -51,22 +75,11 @@ def live_pulse():
 
     cols = st.columns(4)
 
-    for c, ticker in zip(cols, ["SPY", "QQQ", "DIA", "IWM"]):
-        q = quote(ticker)
-
-        c.metric(
-            ticker,
-            money(q.get("price")),
-            pct(q.get("change_pct")),
-        )
-
-        c.caption(
-            f"{q.get('provider', '—')} · "
-            f"{q.get('updated_at', '—')}"
-        )
-
-        with c:
-            open_in_stocks(ticker, "home_pulse")
+    for c, ticker in zip(
+        cols,
+        ["SPY", "QQQ", "DIA", "IWM"],
+    ):
+        show_quote_card(c, ticker, "home_pulse")
 
 
 live_pulse()
@@ -80,17 +93,11 @@ st.subheader(t("top_stocks", lang))
 
 cols = st.columns(4)
 
-for c, ticker in zip(cols, ["NVDA", "AAPL", "MSFT", "GOOGL"]):
-    q = quote(ticker)
-
-    c.metric(
-        ticker,
-        money(q.get("price")),
-        pct(q.get("change_pct")),
-    )
-
-    with c:
-        open_in_stocks(ticker, "home_top")
+for c, ticker in zip(
+    cols,
+    ["NVDA", "AAPL", "MSFT", "GOOGL"],
+):
+    show_quote_card(c, ticker, "home_top")
 
 
 # ---------------------------------------------------------
@@ -105,14 +112,4 @@ if wl:
     cols = st.columns(min(4, len(wl)))
 
     for c, ticker in zip(cols, wl):
-        q = quote(ticker)
-
-        c.metric(
-            ticker,
-            money(q.get("price")),
-            pct(q.get("change_pct")),
-        )
-
-        with c:
-            open_in_stocks(ticker, "home_watch")
-```
+        show_quote_card(c, ticker, "home_watch")
