@@ -2,7 +2,7 @@ from __future__ import annotations
 import difflib, os, requests
 import pandas as pd
 import streamlit as st
-from src.data.providers import quantdash_cfg, validate_symbol
+from src.data.providers import validate_symbol
 from src.config import SEARCH_TTL
 SEC_URL="https://www.sec.gov/files/company_tickers_exchange.json"
 
@@ -18,16 +18,64 @@ def sec_universe():
         return pd.DataFrame([{"symbol":str(x[0]).upper(),"name":str(x[1]),"exchange":str(x[2] or "")} for x in rows if len(x)>=3])
     except Exception:return pd.DataFrame(columns=["symbol","name","exchange"])
 
-def _qd_search(q):
-    base,key=quantdash_cfg()
-    if not base:return []
+def _qd_search(query):
     try:
         import streamlit as st
-        path=st.secrets.get("quantdash_search_path","/v1/search")
-        h={"Authorization":f"Bearer {key}"} if key else {}
-        r=requests.get(base+path,params={"q":q},headers=h,timeout=8); r.raise_for_status(); d=r.json(); rows=d.get("data",d.get("results",[]))
-        return [{"symbol":str(x.get("symbol",x.get("ticker",""))).upper(),"name":x.get("name",x.get("description",x.get("symbol",""))),"exchange":x.get("exchange","")} for x in rows if x.get("symbol") or x.get("ticker")]
-    except Exception:return []
+        from quantdash import QuantDash
+
+        api_key = st.secrets.get("quantdash_api_key", "")
+
+        if not api_key:
+            return []
+
+        client = QuantDash(api_key=api_key)
+
+        result = client.quotes.get(
+            universes="US_Stock",
+            to_dataframe=True,
+        )
+
+        if result is None or result.empty:
+            return []
+
+        q = query.lower()
+
+        rows = []
+
+        for _, row in result.iterrows():
+            values = " ".join(
+                str(row.get(column, ""))
+                for column in result.columns
+            ).lower()
+
+            if q in values:
+                symbol = (
+                    row.get("symbol")
+                    or row.get("ticker")
+                    or row.get("代码")
+                )
+
+                if symbol:
+                    rows.append({
+                        "symbol": str(symbol).upper(),
+                        "name": str(
+                            row.get("name")
+                            or row.get("名称")
+                            or symbol
+                        ),
+                        "exchange": str(
+                            row.get("exchange", "")
+                        ),
+                        "type": "EQUITY",
+                    })
+
+            if len(rows) >= 20:
+                break
+
+        return rows
+
+    except Exception:
+        return []
 
 def _yahoo_search(q):
     try:

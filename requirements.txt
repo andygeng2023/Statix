@@ -1,7 +1,8 @@
 streamlit==1.62.0
-yfinance>=0.2.66,<1
+quantdash==0.1.0
 akshare>=1.18.94,<2
 tushare>=1.4.0,<2
+yfinance>=0.2.66,<1
 pandas>=2.2,<3
 numpy>=2.0,<3
 scikit-learn>=1.7,<2

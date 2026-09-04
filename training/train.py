@@ -22,8 +22,44 @@ def main():
   if len(f)>=180:f["_date"]=f.index;frames.append(f);print(f"[{i}/{len(tickers)}] {t} {len(f)} rows")
  if not frames:raise RuntimeError("No usable training data")
  data=pd.concat(frames,ignore_index=True).sort_values("_date"); dates=np.sort(data._date.unique()); cut=dates[max(1,int(len(dates)*.8)-1)]; tr=data[data._date<=cut]; te=data[data._date>cut]
- Xtr=[];ytr=[];rtr=[];Xte=[];yte=[];rte=[]
- for _,g in tr.groupby(tr.index//1): pass
+Xtr = []
+ytr = []
+rtr = []
+
+Xte = []
+yte = []
+rte = []
+
+for frame in frames:
+    X, y, r = seqs(frame, cols)
+
+    if len(X) < 100:
+        continue
+
+    split = int(len(X) * 0.8)
+
+    Xtr.extend(X[:split])
+    ytr.extend(y[:split])
+    rtr.extend(r[:split])
+
+    Xte.extend(X[split:])
+    yte.extend(y[split:])
+    rte.extend(r[split:])
+
+if not Xtr or not Xte:
+    raise RuntimeError(
+        "Not enough training/validation data."
+    )
+
+Xtr = np.asarray(Xtr, dtype=float)
+Xte = np.asarray(Xte, dtype=float)
+
+ytr = np.asarray(ytr, dtype=int)
+yte = np.asarray(yte, dtype=int)
+
+rtr = np.asarray(rtr, dtype=float)
+rte = np.asarray(rte, dtype=float)
+
  # Build per-symbol sequences is unnecessary because the model consumes compact rolling feature vectors; keep chronological date split.
  for g in frames:
   X,y,r=seqs(g,cols); split=int(len(X)*.8); Xtr+=X[:split];ytr+=y[:split];rtr+=r[:split];Xte+=X[split:];yte+=y[split:];rte+=r[split:]
