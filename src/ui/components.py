@@ -183,22 +183,18 @@ def bottom_navigation(page: str, labels: dict[str, str]):
         unsafe_allow_html=True,
     )
 
-    cols = st.columns(4, gap="small")
+    tabs = []
+    for key, label in labels.items():
+        active = " statix-bottom-tab-active" if page == key else ""
+        tabs.append(
+            f'<a class="statix-bottom-tab{active}" '
+            f'href="?page={quote(key)}">{html.escape(label)}</a>'
+        )
 
-    for col, key in zip(cols, labels):
-        with col:
-            active = page == key
-
-            if st.button(
-                labels[key],
-                key=f"bottom_nav_{key}",
-                use_container_width=True,
-                type="primary" if active else "secondary",
-            ):
-                st.session_state["page"] = key
-                st.session_state.pop("selected_ticker", None)
-                st.query_params.clear()
-                st.rerun()
+    st.markdown(
+        '<nav class="statix-bottom-nav">' + "".join(tabs) + "</nav>",
+        unsafe_allow_html=True,
+    )
 
 
 def inject_theme_css():
@@ -329,6 +325,38 @@ def inject_theme_css():
 
         .statix-bottom-spacer {
             height:80px;
+        }
+
+        .statix-bottom-nav {
+            position:fixed;
+            z-index:1000;
+            left:0;
+            right:0;
+            bottom:0;
+            display:flex;
+            gap:8px;
+            padding:12px max(16px, calc((100vw - 1500px) / 2));
+            background:color-mix(in srgb, var(--statix-bg) 94%, transparent);
+            border-top:1px solid var(--statix-border);
+            backdrop-filter:blur(12px);
+        }
+
+        .statix-bottom-tab {
+            flex:1;
+            padding:10px 8px;
+            border:1px solid transparent;
+            border-radius:8px;
+            color:var(--statix-muted);
+            text-align:center;
+            text-decoration:none;
+            font-size:.9rem;
+        }
+
+        .statix-bottom-tab:hover,
+        .statix-bottom-tab-active {
+            border-color:var(--statix-border);
+            background:var(--statix-hover);
+            color:var(--statix-text);
         }
 
         [data-testid="stHorizontalBlock"] {

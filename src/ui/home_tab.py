@@ -4,7 +4,7 @@ import streamlit as st
 
 from src.data.market import history, quote
 from src.data.search import security_name
-from src.storage.database import get_settings, get_watchlist
+from src.storage.database import get_settings, get_watchlist, latest_scan
 from src.ui.components import card_row, t
 
 
@@ -35,6 +35,7 @@ watchlist = [
 ]
 
 watch_set = set(watchlist)
+latest_job, latest_rows = latest_scan()
 
 
 # ---------------------------------------
@@ -120,6 +121,36 @@ card_row(
     ),
     key_prefix="home_pulse",
 )
+
+
+# ---------------------------------------
+# DISCOVER
+# ---------------------------------------
+
+st.subheader("Discover")
+
+discover_items = []
+for row in latest_rows[:16]:
+    ticker = row["ticker"]
+    q = quote(ticker)
+    discover_items.append(
+        {
+            "ticker": ticker,
+            "name": security_name(ticker),
+            "price": q.get("price", row.get("price")),
+            "change_pct": q.get("change_pct", row.get("change_pct")),
+            "df": history(ticker, "6mo"),
+            "signal": row.get("signal"),
+            "confidence": row.get("confidence"),
+            "reliability": row.get("reliability"),
+            "expected_return": row.get("expected_return"),
+        }
+    )
+
+if discover_items:
+    card_row(discover_items, key_prefix="home_discover")
+else:
+    st.info("No completed scan yet.")
 
 
 # ---------------------------------------

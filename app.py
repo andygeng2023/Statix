@@ -49,6 +49,8 @@ valid_pages = {
 
 if url_page in valid_pages:
     st.session_state["page"] = url_page
+    if not url_ticker:
+        st.session_state.pop("selected_ticker", None)
 
 elif "page" not in st.session_state:
     st.session_state["page"] = "home"
