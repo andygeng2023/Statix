@@ -356,49 +356,51 @@ def card_row(
 
 def bottom_nav(page: str):
 
-    st.markdown(
-        '<div class="statix-bottom-spacer"></div>',
-        unsafe_allow_html=True,
-    )
+    with st.container(key="bottom_nav"):
 
-    labels = {
-        "home": "Home",
-        "stocks": "Stocks",
-        "discover": "Discover",
-        "settings": "Settings",
-    }
-
-    cols = st.columns(
-        4,
-        gap="small",
-    )
-
-    for col, (key, label) in zip(
-        cols,
-        labels.items(),
-    ):
-
-        active = (
-            page == key
+        st.markdown(
+            '<div class="statix-bottom-spacer"></div>',
+            unsafe_allow_html=True,
         )
 
-        with col:
+        labels = {
+            "home": "Home",
+            "stocks": "Stocks",
+            "discover": "Discover",
+            "settings": "Settings",
+        }
 
-            if st.button(
-                label,
-                key=f"bottom_nav_{key}",
-                width="stretch",
-                type="primary" if active else "secondary",
-            ):
+        cols = st.columns(
+            4,
+            gap="small",
+        )
 
-                st.session_state["page"] = key
+        for col, (key, label) in zip(
+            cols,
+            labels.items(),
+        ):
 
-                if key != "stocks":
-                    st.session_state[
-                        "selected_ticker"
-                    ] = None
+            active = (
+                page == key
+            )
 
-                st.rerun()
+            with col:
+
+                if st.button(
+                    label,
+                    key=f"bottom_nav_{key}",
+                    width="stretch",
+                    type="primary" if active else "secondary",
+                ):
+
+                    st.session_state["page"] = key
+
+                    if key != "stocks":
+                        st.session_state[
+                            "selected_ticker"
+                        ] = None
+
+                    st.rerun()
 
 
 # ============================================================
@@ -623,10 +625,11 @@ div[data-testid="stHorizontalBlock"]:has(
 
 
 /*
-   Target the last horizontal block, which is the bottom nav.
+    Scope the fixed position to the navigation container so card rows
+    remain in the normal page flow.
 */
 
-div[data-testid="stHorizontalBlock"]:last-of-type {
+div[class*="st-key-bottom_nav"] div[data-testid="stHorizontalBlock"] {
     position: fixed;
 
     left: 0;
