@@ -21,8 +21,7 @@ def main():
   f,cols=create_features(d,market,target=True)
   if len(f)>=180:f["_date"]=f.index;frames.append(f);print(f"[{i}/{len(tickers)}] {t} {len(f)} rows")
  if not frames:raise RuntimeError("No usable training data")
- data=pd.concat(frames,ignore_index=True).sort_values("_date"); dates=np.sort(data._date.unique()); cut=dates[max(1,int(len(dates)*.8)-1)]; tr=data[data._date<=cut]; te=data[data._date>cut]
-Xtr = []
+
 ytr = []
 rtr = []
 

@@ -1,7 +1,7 @@
 # Statix Production 2.0
 
 ## Architecture
-- One Streamlit app with exactly four top-level tabs: Home, Stocks, Discover, Settings.
+- One Streamlit app with four top-level tabs: Home, Stocks, Discover, Settings.
 - Stocks contains search + persistent user watchlist cards + stock detail.
 - Discover contains the persistent scanner queue and recommendation cards.
 - Settings controls language, provider preference, and identity display.
