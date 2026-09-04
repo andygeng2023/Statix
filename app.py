@@ -7,35 +7,19 @@ from src.config import APP_NAME
 from src.storage.database import get_settings
 from src.ui.components import inject_theme_css
 
-
-st.set_page_config(
-    page_title=APP_NAME,
-    page_icon="📈",
-    layout="wide",
-    initial_sidebar_state="collapsed",
-)
-
+st.set_page_config(page_title=APP_NAME, page_icon="📈", layout="wide", initial_sidebar_state="collapsed")
 inject_theme_css()
 
 if not ensure_authenticated():
     st.stop()
 
 settings = get_settings()
-lang = st.session_state.get(
-    "language_preference",
-    settings.get("language", "en"),
-)
-st.session_state.setdefault(
-    "provider_preference",
-    settings.get("provider", "auto"),
-)
+lang = st.session_state.get("language_preference", settings.get("language", "en"))
+st.session_state.setdefault("provider_preference", settings.get("provider", "auto"))
 
-# URL-driven navigation is what makes a whole card clickable while keeping
-# the tab-like navigation appearance.
 params = st.query_params
 url_page = params.get("page")
 url_ticker = params.get("ticker")
-
 valid_pages = {"home", "stocks", "discover", "settings"}
 
 if url_page in valid_pages:
@@ -52,35 +36,14 @@ with st.sidebar:
     st.markdown('<div class="brand">Statix</div>', unsafe_allow_html=True)
     user = current_user()
     st.caption((user or {}).get("email") or "Local user")
-    st.caption(
-        "Model outputs are research signals, not guarantees or financial advice."
-    )
+    st.caption("Model outputs are research signals, not guarantees or financial advice.")
 
-# Four top-level areas. These are buttons styled like native sliding tabs;
-# unlike st.tabs(), they can be changed by a card click.
-nav = st.columns(4)
-labels = {
-    "home": "Home",
-    "stocks": "Stocks",
-    "discover": "Discover",
-    "settings": "Settings",
-}
-
-for col, key in zip(nav, labels):
-    with col:
-        if st.button(
-            labels[key],
-            key=f"nav_{key}",
-            use_container_width=True,
-        ):
-            st.session_state["page"] = key
-            st.query_params.clear()
-            st.rerun()
-
-        if page == key:
-            st.markdown('<div class="statix-active-nav"></div>', unsafe_allow_html=True)
-
-st.markdown('<div class="statix-nav-spacer"></div>', unsafe_allow_html=True)
+labels = {"home":"Home", "stocks":"Stocks", "discover":"Discover", "settings":"Settings"}
+nav_html = "".join(
+    f'<a class="{"active" if page == key else ""}" href="?page={key}">{label}</a>'
+    for key, label in labels.items()
+)
+st.markdown(f'<nav class="statix-bottom-nav">{nav_html}</nav>', unsafe_allow_html=True)
 
 if page == "home":
     exec(open("src/ui/home_tab.py").read(), globals())

@@ -22,4 +22,4 @@ def create_features(stock,market=None,horizon=5,target=True):
  cols=[c for c in d.columns if c not in {"open","high","low","close","volume","future_return","target"}]
  if target:
   d["future_return"]=c.shift(-horizon)/c-1; d["target"]=pd.cut(d.future_return,[-np.inf,-.03,-.005,.005,.03,np.inf],labels=False).astype(float)
- clean=d.dropna(subset=cols+(["future_return","target"] if target else [])).copy(); return clean,cols
+ clean=d.dropna(subset=cols+(["future_return","target"] if target else [])).copy(); clean[cols]=clean[cols].replace([np.inf,-np.inf],np.nan); clean=clean.dropna(subset=cols); return clean,cols
