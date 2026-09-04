@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import threading
+import time
 from pathlib import Path
 
 import pandas as pd
@@ -10,11 +12,30 @@ from fastapi.staticfiles import StaticFiles
 from src.data.market import history, quote
 from src.data.search import security_name
 from src.storage.database import enqueue_scan, job_status, latest_scan
+from src.storage.database import claim_job, finish_job
+from scanner_worker import run as run_scan
 
 ROOT = Path(__file__).resolve().parent
 WEB = ROOT / "web"
 app = FastAPI(title="Statix", version="2.0.0")
 app.mount("/static", StaticFiles(directory=WEB), name="static")
+
+
+def _worker_loop():
+    while True:
+        job_id = claim_job()
+        if job_id is None:
+            time.sleep(5)
+            continue
+        try:
+            finish_job(job_id, run_scan(job_id))
+        except Exception as exc:
+            finish_job(job_id, [], exc)
+
+
+@app.on_event("startup")
+def start_worker():
+    threading.Thread(target=_worker_loop, name="statix-scanner", daemon=True).start()
 
 AREAS = {
     "Top stocks": ["NVDA", "MSFT", "AAPL", "AMZN", "GOOGL", "META", "AVGO", "TSLA"],
@@ -100,4 +121,19 @@ def scan(limit: int = 100):
 
 @app.get("/api/stock/{ticker}")
 def stock(ticker: str):
-    return _serialise(ticker)
+    item = _serialise(ticker)
+    frame = history(ticker, "5y")
+    if frame is not None and not frame.empty:
+        try:
+            from src.models.features import create_features
+            from src.models.model import load_model
+
+            model = load_model()
+            features, _ = create_features(frame, history("SPY", "5y"), target=False)
+            if model is not None and len(features) >= 64:
+                item["prediction"] = model.predict(
+                    features[model.feature_columns].tail(64).to_numpy()
+                )
+        except Exception:
+            item["prediction"] = None
+    return item

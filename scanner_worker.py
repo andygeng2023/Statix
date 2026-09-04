@@ -5,7 +5,7 @@ import pandas as pd
 
 from src.config import MAX_SCAN, ROOT, SEQUENCE_LENGTH
 from src.storage.database import claim_job, finish_job, job_limit
-from src.data.market import get_history
+from src.data.providers import get_history
 from src.data.providers import selected_provider
 from src.models.features import create_features
 from src.models.model import load_model
