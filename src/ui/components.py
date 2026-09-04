@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+from urllib.parse import quote
 
 import numpy as np
 import pandas as pd
@@ -104,6 +105,7 @@ def card_html(
 
     safe_symbol = html.escape(symbol, quote=True)
     safe_name = html.escape(name or symbol, quote=True)
+    stock_url = f"?page=stocks&amp;ticker={quote(symbol)}"
 
     spark = _sparkline_svg(df)
 
@@ -130,6 +132,7 @@ def card_html(
         )
 
     return f"""
+    <a class="statix-card-link" href="{stock_url}">
     <div class="statix-card">
         <div class="statix-card-head">
             <div>
@@ -148,6 +151,7 @@ def card_html(
 
         {prediction}
     </div>
+    </a>
     """
 
 
@@ -155,15 +159,9 @@ def card_row(items: list[dict], key_prefix: str = "card"):
     if not items:
         return
 
-    # Horizontal scrolling container.
-    st.markdown('<div class="statix-scroll-row">', unsafe_allow_html=True)
-
-    for index, item in enumerate(items):
-        ticker = str(item["ticker"]).upper()
-
-        left, right = st.columns([9, 1], gap="small")
-
-        with left:
+    with st.container(horizontal=True, gap="small"):
+        for item in items:
+            ticker = str(item["ticker"]).upper()
             st.html(
                 card_html(
                     ticker=ticker,
@@ -177,20 +175,6 @@ def card_row(items: list[dict], key_prefix: str = "card"):
                     expected_return=item.get("expected_return"),
                 )
             )
-
-        with right:
-            if st.button(
-                "↗",
-                key=f"{key_prefix}_{ticker}_{index}",
-                help=f"Open {ticker}",
-                use_container_width=True,
-            ):
-                st.session_state["page"] = "stocks"
-                st.session_state["selected_ticker"] = ticker
-                st.query_params.clear()
-                st.rerun()
-
-    st.markdown("</div>", unsafe_allow_html=True)
 
 
 def bottom_navigation(page: str, labels: dict[str, str]):
@@ -253,30 +237,21 @@ def inject_theme_css():
             padding-bottom:2rem;
         }
 
-        /* Horizontal card scrolling */
-
-        .statix-scroll-row {
-            display:flex;
-            overflow-x:auto;
-            overflow-y:hidden;
-            gap:18px;
-            width:100%;
-            padding:4px 4px 18px;
-            margin-bottom:22px;
-            scrollbar-width:thin;
-        }
-
-        .statix-scroll-row::-webkit-scrollbar {
-            height:7px;
-        }
-
         /* Individual card */
+
+        .statix-card-link {
+            display:block;
+            flex:0 0 220px;
+            width:220px;
+            color:inherit;
+            text-decoration:none;
+        }
 
         .statix-card {
             width:100%;
-            min-height:250px;
+            min-height:190px;
             box-sizing:border-box;
-            padding:22px 24px;
+            padding:16px 18px;
             background:transparent;
             border:1px solid var(--statix-border);
             border-radius:10px;
@@ -299,7 +274,7 @@ def inject_theme_css():
         }
 
         .statix-ticker {
-            font-size:1.3rem;
+            font-size:1.15rem;
             font-weight:760;
             letter-spacing:-.02em;
         }
@@ -322,18 +297,18 @@ def inject_theme_css():
             display:flex;
             justify-content:space-between;
             align-items:baseline;
-            margin-top:22px;
+            margin-top:16px;
             font-size:.98rem;
             font-variant-numeric:tabular-nums;
         }
 
         .statix-card-stats b {
-            font-size:1.4rem;
+            font-size:1.2rem;
         }
 
         .statix-chart {
-            height:105px;
-            margin-top:17px;
+            height:76px;
+            margin-top:12px;
             color:var(--statix-accent);
             opacity:.92;
         }
@@ -348,15 +323,6 @@ def inject_theme_css():
             font-size:.82rem;
             margin-top:12px;
             line-height:1.45;
-        }
-
-        /*
-        The Streamlit button beside each card is the actual
-        navigation control. Make it visually minimal.
-        */
-
-        div[data-testid="stButton"] button {
-            border-radius:8px;
         }
 
         /* Bottom navigation */
@@ -375,9 +341,14 @@ def inject_theme_css():
 
         @media (max-width:700px) {
 
+            .statix-card-link {
+                flex-basis:200px;
+                width:200px;
+            }
+
             .statix-card {
-                min-height:225px;
-                padding:19px 20px;
+                min-height:175px;
+                padding:14px 16px;
             }
 
             .statix-card-stats b {
