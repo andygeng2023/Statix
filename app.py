@@ -5,7 +5,7 @@ import streamlit as st
 from src.auth import ensure_authenticated, current_user
 from src.config import APP_NAME
 from src.storage.database import get_settings
-from src.ui.components import bottom_nav_html, inject_theme_css
+from src.ui.components import bottom_navigation, inject_theme_css
 
 
 st.set_page_config(
@@ -34,14 +34,10 @@ st.session_state.setdefault(
 )
 
 
-# ---------------------------------------------------------
-# Navigation state
-# ---------------------------------------------------------
-
 params = st.query_params
 
-page = params.get("page", "home")
-ticker = params.get("ticker")
+url_page = params.get("page")
+url_ticker = params.get("ticker")
 
 valid_pages = {
     "home",
@@ -50,18 +46,22 @@ valid_pages = {
     "settings",
 }
 
-if page not in valid_pages:
-    page = "home"
 
-st.session_state["page"] = page
+if url_page in valid_pages:
+    st.session_state["page"] = url_page
 
-if ticker:
-    st.session_state["selected_ticker"] = str(ticker).upper()
+elif "page" not in st.session_state:
+    st.session_state["page"] = "home"
 
 
-# ---------------------------------------------------------
-# Sidebar
-# ---------------------------------------------------------
+if url_ticker:
+    st.session_state["selected_ticker"] = str(
+        url_ticker
+    ).upper()
+
+
+page = st.session_state.get("page", "home")
+
 
 with st.sidebar:
     st.markdown(
@@ -72,17 +72,14 @@ with st.sidebar:
     user = current_user()
 
     st.caption(
-        (user or {}).get("email") or "Local user"
+        (user or {}).get("email")
+        or "Local user"
     )
 
     st.caption(
         "Model outputs are research signals, not guarantees or financial advice."
     )
 
-
-# ---------------------------------------------------------
-# Bottom navigation
-# ---------------------------------------------------------
 
 labels = {
     "home": "Home",
@@ -91,36 +88,32 @@ labels = {
     "settings": "Settings",
 }
 
-st.html(
-    bottom_nav_html(page, labels),
-    unsafe_allow_javascript=True,
-)
 
-
-# ---------------------------------------------------------
-# Pages
-# ---------------------------------------------------------
-
+# Page content first.
 if page == "home":
     exec(
-        open("src/ui/home_tab.py", encoding="utf-8").read(),
+        open("src/ui/home_tab.py").read(),
         globals(),
     )
 
 elif page == "stocks":
     exec(
-        open("src/ui/stocks_tab.py", encoding="utf-8").read(),
+        open("src/ui/stocks_tab.py").read(),
         globals(),
     )
 
 elif page == "discover":
     exec(
-        open("src/ui/discover_tab.py", encoding="utf-8").read(),
+        open("src/ui/discover_tab.py").read(),
         globals(),
     )
 
 elif page == "settings":
     exec(
-        open("src/ui/settings_tab.py", encoding="utf-8").read(),
+        open("src/ui/settings_tab.py").read(),
         globals(),
     )
+
+
+# Native Streamlit navigation.
+bottom_navigation(page, labels)

@@ -36,7 +36,10 @@ if search.strip():
                 "df": history(symbol, "3mo"),
             })
         st.caption(f"{len(items)} relevant result(s)")
-        card_row(items)
+        card_row(
+        items,
+        key_prefix="stocks_search",
+    )
 
 st.divider()
 st.subheader(t("watchlist", lang))
@@ -53,7 +56,10 @@ else:
             "change_pct": quote(ticker).get("change_pct"),
             "df": history(ticker, "1y"),
         })
-    card_row(items)
+    card_row(
+        items,
+        key_prefix="stocks_watchlist",
+    )
 
 # Whole-card links set this value through the query string, so the detail view
 # remains inside Statix rather than opening another browser tab.

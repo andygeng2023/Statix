@@ -46,6 +46,9 @@ if job and rows:
             "reliability": row.get("reliability"),
             "expected_return": row.get("expected_return"),
         })
-    card_row(items)
+    card_row(
+        items,
+        key_prefix="discover",
+    )
 else:
     st.info("No completed scan yet.")

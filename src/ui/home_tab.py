@@ -17,56 +17,17 @@ lang = st.session_state.get(
 
 
 st.markdown("# Home")
-st.caption("Market overview, saved symbols and model signals.")
+st.caption(
+    "Market overview, saved symbols and model signals."
+)
 
 
-@st.cache_data(ttl=300, show_spinner=False)
-def load_card_data(ticker: str, period: str):
+def card_data(ticker, period="6mo"):
     q = quote(ticker)
-
-    try:
-        df = history(ticker, period)
-    except Exception:
-        df = None
+    df = history(ticker, period)
 
     return q, df
 
-
-@st.cache_data(ttl=3600, show_spinner=False)
-def cached_security_name(ticker: str):
-    return security_name(ticker)
-
-
-def make_items(symbols: list[str], period: str):
-    items = []
-
-    for ticker in symbols:
-        ticker = str(ticker).upper()
-
-        try:
-            q, df = load_card_data(ticker, period)
-        except Exception:
-            continue
-
-        if not q:
-            continue
-
-        items.append(
-            {
-                "ticker": ticker,
-                "name": cached_security_name(ticker),
-                "price": q.get("price"),
-                "change_pct": q.get("change_pct"),
-                "df": df,
-            }
-        )
-
-    return items
-
-
-# ---------------------------------------------------------
-# Watchlist
-# ---------------------------------------------------------
 
 watchlist = [
     str(x).upper()
@@ -76,27 +37,29 @@ watchlist = [
 watch_set = set(watchlist)
 
 
-# ---------------------------------------------------------
-# Market pulse
-# ---------------------------------------------------------
+# ---------------------------------------
+# MARKET PULSE
+# ---------------------------------------
+
+pulse_symbols = [
+    "SPY",
+    "QQQ",
+    "DIA",
+    "IWM",
+]
 
 pulse_symbols = [
     ticker
-    for ticker in [
-        "SPY",
-        "QQQ",
-        "DIA",
-        "IWM",
-    ]
+    for ticker in pulse_symbols
     if ticker not in watch_set
 ]
 
 
-# ---------------------------------------------------------
-# Featured
-# ---------------------------------------------------------
+# ---------------------------------------
+# TOP STOCKS
+# ---------------------------------------
 
-featured_candidates = [
+featured_symbols = [
     "NVDA",
     "MSFT",
     "GOOGL",
@@ -107,28 +70,61 @@ featured_candidates = [
     "AAPL",
 ]
 
-already_used = set(pulse_symbols) | watch_set
 
-featured = [
+already_used = set(
+    pulse_symbols
+) | watch_set
+
+
+featured_symbols = [
     ticker
-    for ticker in featured_candidates
+    for ticker in featured_symbols
     if ticker not in already_used
 ]
 
 
-# ---------------------------------------------------------
-# Render sections
-# ---------------------------------------------------------
+def make_items(symbols, period):
+    items = []
 
-st.subheader(t("market_pulse", lang))
+    for ticker in symbols:
+        q, df = card_data(
+            ticker,
+            period,
+        )
 
-pulse_items = make_items(
-    pulse_symbols,
-    "3mo",
+        items.append(
+            {
+                "ticker": ticker,
+                "name": security_name(ticker),
+                "price": q.get("price"),
+                "change_pct": q.get("change_pct"),
+                "df": df,
+            }
+        )
+
+    return items
+
+
+# ---------------------------------------
+# MARKET PULSE
+# ---------------------------------------
+
+st.subheader(
+    t("market_pulse", lang)
 )
 
-card_row(pulse_items)
+card_row(
+    make_items(
+        pulse_symbols,
+        "3mo",
+    ),
+    key_prefix="home_pulse",
+)
 
+
+# ---------------------------------------
+# WATCHLIST
+# ---------------------------------------
 
 if watchlist:
 
@@ -136,23 +132,27 @@ if watchlist:
         t("watch_suggestions", lang)
     )
 
-    watch_items = make_items(
-        watchlist[:8],
+    card_row(
+        make_items(
+            watchlist[:8],
+            "6mo",
+        ),
+        key_prefix="home_watchlist",
+    )
+
+
+# ---------------------------------------
+# FEATURED
+# ---------------------------------------
+
+st.subheader(
+    t("top_stocks", lang)
+)
+
+card_row(
+    make_items(
+        featured_symbols,
         "6mo",
-    )
-
-    card_row(watch_items)
-
-
-if featured:
-
-    st.subheader(
-        t("top_stocks", lang)
-    )
-
-    featured_items = make_items(
-        featured,
-        "6mo",
-    )
-
-    card_row(featured_items)
+    ),
+    key_prefix="home_featured",
+)
