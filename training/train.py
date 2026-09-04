@@ -189,19 +189,18 @@ def main():
     neginf=0.0,
 )
 
-Xte = np.clip(Xte, -20.0, 20.0)
+    Xte = np.clip(Xte, -20.0, 20.0)
 
-Xte_scaled = (Xte - mean) / (std + 1e-8)
+    Xte_scaled = (Xte - mean) / (std + 1e-8)
 
-Xte_scaled = np.nan_to_num(
-    Xte_scaled,
-    nan=0.0,
-    posinf=10.0,
-    neginf=-10.0,
-)
+    Xte_scaled = np.nan_to_num(
+        Xte_scaled,
+        nan=0.0,
+        posinf=10.0,
+        neginf=-10.0,
+    )
 
-Xte_scaled = np.clip(Xte_scaled, -10.0, 10.0)
-
+    Xte_scaled = np.clip(Xte_scaled, -10.0, 10.0)
     probabilities = (
         clf.predict_proba(Xte_scaled)
         + hgb.predict_proba(Xte_scaled)
