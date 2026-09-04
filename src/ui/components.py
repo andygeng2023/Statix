@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import base64
 import html
-import io
 
 import numpy as np
 import pandas as pd
@@ -11,109 +9,54 @@ import streamlit as st
 from src.config import TEXT
 
 
-# ============================================================
-# Translation helper
-# ============================================================
-
-def t(key: str, lang: str) -> str:
-    return TEXT.get(
-        lang,
-        TEXT["en"],
-    ).get(
-        key,
-        TEXT["en"].get(key, key),
-    )
+def t(key, lang):
+    return TEXT.get(lang, TEXT["en"]).get(key, TEXT["en"].get(key, key))
 
 
-# ============================================================
-# Number formatting
-# ============================================================
-
-def money(
-    value,
-    symbol="$",
-    decimals=2,
-):
+def money(value, symbol="$", decimals=2):
     if value is None:
         return "—"
-
     try:
         return f"{symbol}{float(value):,.{decimals}f}"
     except (TypeError, ValueError):
         return "—"
 
 
-def number(
-    value,
-    decimals=2,
-):
+def number(value, decimals=2):
     if value is None:
         return "—"
-
     try:
         return f"{float(value):,.{decimals}f}"
     except (TypeError, ValueError):
         return "—"
 
 
-def pct(
-    value,
-    decimals=2,
-    signed=True,
-):
+def pct(value, decimals=2, signed=True):
     if value is None:
         return "—"
-
     try:
         n = float(value)
-
-        prefix = (
-            "+"
-            if signed and n > 0
-            else ""
-        )
-
+        prefix = "+" if signed and n > 0 else ""
         return f"{prefix}{n:,.{decimals}f}%"
-
     except (TypeError, ValueError):
         return "—"
 
 
-def score(
-    value,
-    decimals=2,
-):
+def score(value, decimals=2):
     if value is None:
         return "—"
-
     try:
         return f"{float(value) * 100:.{decimals}f}%"
     except (TypeError, ValueError):
         return "—"
 
 
-# ============================================================
-# Sparkline
-# ============================================================
-
-def _sparkline_svg(
-    df: pd.DataFrame | None,
-    width: int = 640,
-    height: int = 120,
-) -> str:
-
-    if (
-        df is None
-        or df.empty
-        or "close" not in df.columns
-    ):
+def _sparkline_svg(df: pd.DataFrame | None, width=640, height=120) -> str:
+    if df is None or df.empty or "close" not in df.columns:
         return ""
 
     values = (
-        pd.to_numeric(
-            df["close"],
-            errors="coerce",
-        )
+        pd.to_numeric(df["close"], errors="coerce")
         .dropna()
         .tail(80)
         .to_numpy(dtype=float)
@@ -124,97 +67,28 @@ def _sparkline_svg(
     if len(values) < 2:
         return ""
 
-    low = float(values.min())
-    high = float(values.max())
-
-    span = high - low
-
-    if span == 0:
-        span = 1.0
+    lo = float(values.min())
+    hi = float(values.max())
+    span = hi - lo or 1.0
 
     points = []
 
     for i, value in enumerate(values):
-
-        x = (
-            4
-            + (width - 8)
-            * i
-            / (len(values) - 1)
-        )
-
-        y = (
-            height
-            - 8
-            - (height - 16)
-            * (value - low)
-            / span
-        )
-
-        points.append(
-            f"{x:.1f},{y:.1f}"
-        )
+        x = 4 + (width - 8) * i / (len(values) - 1)
+        y = height - 8 - (height - 16) * (value - lo) / span
+        points.append(f"{x:.1f},{y:.1f}")
 
     return (
-        f'<svg '
-        f'class="statix-spark" '
-        f'viewBox="0 0 {width} {height}" '
-        f'preserveAspectRatio="none" '
-        f'aria-hidden="true">'
-        f'<polyline '
-        f'points="{" ".join(points)}" '
-        f'fill="none" '
-        f'stroke="currentColor" '
-        f'stroke-width="2.5" '
-        f'stroke-linecap="round" '
-        f'stroke-linejoin="round" />'
-        f'</svg>'
+        f'<svg class="statix-spark" viewBox="0 0 {width} {height}" '
+        f'preserveAspectRatio="none" aria-hidden="true">'
+        f'<polyline points="{" ".join(points)}" fill="none" '
+        f'stroke="currentColor" stroke-width="2.4" '
+        f'stroke-linecap="round" stroke-linejoin="round" />'
+        f"</svg>"
     )
 
 
-# ============================================================
-# Convert SVG into a small data URI image.
-#
-# Streamlit buttons support Markdown images in their labels.
-# This lets the actual native button contain a graph.
-# ============================================================
-
-def _sparkline_markdown(
-    df: pd.DataFrame | None,
-) -> str:
-
-    svg = _sparkline_svg(df)
-
-    if not svg:
-        return ""
-
-    encoded = base64.b64encode(
-        svg.encode("utf-8")
-    ).decode("ascii")
-
-    return (
-        f"![chart]"
-        f"(data:image/svg+xml;base64,{encoded})"
-    )
-
-
-# ============================================================
-# Navigate inside Streamlit
-# ============================================================
-
-def open_stock(ticker: str):
-    st.session_state["selected_ticker"] = (
-        str(ticker).upper()
-    )
-
-    st.session_state["page"] = "stocks"
-
-
-# ============================================================
-# Native clickable stock card
-# ============================================================
-
-def stock_card(
+def card_html(
     ticker: str,
     name: str | None,
     price: float | None,
@@ -224,477 +98,295 @@ def stock_card(
     confidence: float | None = None,
     reliability: float | None = None,
     expected_return: float | None = None,
-    key: str | None = None,
-):
+) -> str:
 
     symbol = str(ticker).upper()
 
-    display_name = (
-        name
-        or symbol
-    )
+    safe_symbol = html.escape(symbol, quote=True)
+    safe_name = html.escape(name or symbol, quote=True)
 
-    spark = _sparkline_markdown(df)
+    spark = _sparkline_svg(df)
 
-    # --------------------------------------------------------
-    # The button label uses Markdown.
-    #
-    # No <a>
-    # No JavaScript
-    # No window.parent
-    # No query-string navigation
-    # --------------------------------------------------------
-
-    lines = [
-        f"**{symbol}**",
-        f"*{display_name}*",
-        "",
-        f"**{money(price)}**   {pct(change_pct)}",
-    ]
+    prediction = ""
 
     if signal:
-
-        prediction_parts = [
-            f"**{signal}**"
-        ]
+        pieces = [f"<b>{html.escape(str(signal))}</b>"]
 
         if confidence is not None:
-            prediction_parts.append(
-                f"Confidence {score(confidence)}"
-            )
+            pieces.append(f"Confidence {score(confidence)}")
 
         if reliability is not None:
-            prediction_parts.append(
-                f"Reliability {score(reliability)}"
-            )
+            pieces.append(f"Reliability {score(reliability)}")
 
         if expected_return is not None:
-            prediction_parts.append(
+            pieces.append(
                 f"Expected {pct(expected_return * 100)}"
             )
 
-        lines.extend(
-            [
-                "",
-                " · ".join(prediction_parts),
-            ]
+        prediction = (
+            '<div class="statix-card-prediction">'
+            + " · ".join(pieces)
+            + "</div>"
         )
 
-    if spark:
-        lines.extend(
-            [
-                "",
-                spark,
-            ]
-        )
+    return f"""
+    <div class="statix-card">
+        <div class="statix-card-head">
+            <div>
+                <div class="statix-ticker">{safe_symbol}</div>
+                <div class="statix-name">{safe_name}</div>
+            </div>
+            <div class="statix-arrow">↗</div>
+        </div>
 
-    label = "\n\n".join(lines)
+        <div class="statix-card-stats">
+            <span><b>{money(price)}</b></span>
+            <span>{pct(change_pct)}</span>
+        </div>
 
-    clicked = st.button(
-        label,
-        key=key or f"stock_card_{symbol}",
-        width=380,
-        type="secondary",
-        help=f"Open {symbol}",
-    )
+        {f'<div class="statix-chart">{spark}</div>' if spark else ""}
 
-    if clicked:
-        open_stock(symbol)
-        st.rerun()
+        {prediction}
+    </div>
+    """
 
 
-# ============================================================
-# Horizontally scrolling row
-# ============================================================
-
-def card_row(
-    items: list[dict],
-    row_key: str = "row",
-):
-
+def card_row(items: list[dict], key_prefix: str = "card"):
     if not items:
         return
 
-    # Streamlit 1.62 supports:
-    #
-    # horizontal=True
-    # wrap=False
-    #
-    # which produces a single horizontally scrolling row.
-    with st.container(
-        horizontal=True,
-        wrap=False,
-        horizontal_alignment="left",
-        vertical_alignment="top",
-        gap="medium",
-        key=f"scroll_{row_key}",
-    ):
+    # Horizontal scrolling container.
+    st.markdown('<div class="statix-scroll-row">', unsafe_allow_html=True)
 
-        for index, item in enumerate(items):
+    for index, item in enumerate(items):
+        ticker = str(item["ticker"]).upper()
 
-            ticker = str(
-                item["ticker"]
-            ).upper()
+        left, right = st.columns([9, 1], gap="small")
 
-            stock_card(
-                ticker=ticker,
-                name=item.get("name"),
-                price=item.get("price"),
-                change_pct=item.get("change_pct"),
-                df=item.get("df"),
-                signal=item.get("signal"),
-                confidence=item.get("confidence"),
-                reliability=item.get("reliability"),
-                expected_return=item.get("expected_return"),
-                key=f"{row_key}_{index}_{ticker}",
+        with left:
+            st.html(
+                card_html(
+                    ticker=ticker,
+                    name=item.get("name"),
+                    price=item.get("price"),
+                    change_pct=item.get("change_pct"),
+                    df=item.get("df"),
+                    signal=item.get("signal"),
+                    confidence=item.get("confidence"),
+                    reliability=item.get("reliability"),
+                    expected_return=item.get("expected_return"),
+                )
             )
 
+        with right:
+            if st.button(
+                "↗",
+                key=f"{key_prefix}_{ticker}_{index}",
+                help=f"Open {ticker}",
+                use_container_width=True,
+            ):
+                st.session_state["page"] = "stocks"
+                st.session_state["selected_ticker"] = ticker
+                st.query_params.clear()
+                st.rerun()
 
-# ============================================================
-# Bottom navigation
-# ============================================================
-
-def bottom_nav(page: str):
-
-    with st.container(key="bottom_nav"):
-
-        st.markdown(
-            '<div class="statix-bottom-spacer"></div>',
-            unsafe_allow_html=True,
-        )
-
-        labels = {
-            "home": "Home",
-            "stocks": "Stocks",
-            "discover": "Discover",
-            "settings": "Settings",
-        }
-
-        cols = st.columns(
-            4,
-            gap="small",
-        )
-
-        for col, (key, label) in zip(
-            cols,
-            labels.items(),
-        ):
-
-            active = (
-                page == key
-            )
-
-            with col:
-
-                if st.button(
-                    label,
-                    key=f"bottom_nav_{key}",
-                    width="stretch",
-                    type="primary" if active else "secondary",
-                ):
-
-                    st.session_state["page"] = key
-
-                    if key != "stocks":
-                        st.session_state[
-                            "selected_ticker"
-                        ] = None
-
-                    st.rerun()
+    st.markdown("</div>", unsafe_allow_html=True)
 
 
-# ============================================================
-# Theme
-# ============================================================
+def bottom_navigation(page: str, labels: dict[str, str]):
+    st.markdown(
+        '<div class="statix-bottom-spacer"></div>',
+        unsafe_allow_html=True,
+    )
+
+    cols = st.columns(4, gap="small")
+
+    for col, key in zip(cols, labels):
+        with col:
+            active = page == key
+
+            if st.button(
+                labels[key],
+                key=f"bottom_nav_{key}",
+                use_container_width=True,
+                type="primary" if active else "secondary",
+            ):
+                st.session_state["page"] = key
+                st.session_state.pop("selected_ticker", None)
+                st.query_params.clear()
+                st.rerun()
+
 
 def inject_theme_css():
-
     st.markdown(
         """
-<style>
-
-/* =========================================================
-   Statix colour system
-   ========================================================= */
-
-:root {
-    --statix-bg: #f2f6ff;
-    --statix-text: #102040;
-    --statix-muted: #64738e;
-    --statix-border: rgba(30, 55, 100, .16);
-    --statix-accent: #5269b5;
-    --statix-hover: rgba(82, 105, 181, .08);
-    --statix-bottom: rgba(242, 246, 255, .92);
-}
-
-@media (prefers-color-scheme: dark) {
-
-    :root {
-        --statix-bg: #071426;
-        --statix-text: #e9effc;
-        --statix-muted: #91a2c0;
-        --statix-border: rgba(155, 181, 225, .17);
-        --statix-accent: #8198e9;
-        --statix-hover: rgba(129, 152, 233, .08);
-        --statix-bottom: rgba(7, 20, 38, .94);
-    }
-}
-
-
-/* =========================================================
-   Application
-   ========================================================= */
-
-.stApp {
-    background: var(--statix-bg);
-    color: var(--statix-text);
-}
-
-.block-container {
-    max-width: 1480px;
-    padding-top: 1.8rem;
-    padding-bottom: 7rem;
-}
-
-
-/* =========================================================
-   Sidebar / branding
-   ========================================================= */
-
-.brand {
-    font-size: 1.75rem;
-    font-weight: 850;
-    letter-spacing: -.05em;
-}
-
-.muted {
-    color: var(--statix-muted);
-}
-
-
-/* =========================================================
-   Horizontal card rows
-   ========================================================= */
-
-.statix-card-row {
-    width: 100%;
-    margin-bottom: 1.2rem;
-}
-
-
-/* =========================================================
-   Native Streamlit stock buttons
-   ========================================================= */
-
-div[class*="st-key-"][class*="stock_card_"] {
-    flex: 0 0 380px;
-    min-width: 380px;
-    width: 380px;
-}
-
-
-/*
-   The actual Streamlit button becomes the card.
-*/
-
-div[class*="st-key-"][class*="stock_card_"] button {
-    width: 380px !important;
-    min-width: 380px !important;
-
-    min-height: 255px !important;
-
-    padding: 22px 24px !important;
-
-    border-radius: 10px !important;
-
-    border: 1px solid var(--statix-border) !important;
-
-    background: transparent !important;
-
-    color: var(--statix-text) !important;
-
-    text-align: left !important;
-
-    box-shadow: none !important;
-
-    transition:
-        border-color .16s ease,
-        background .16s ease,
-        transform .16s ease,
-        box-shadow .16s ease !important;
-}
-
-
-/*
-   Make the card feel like a card rather than a button.
-*/
-
-div[class*="st-key-"][class*="stock_card_"] button:hover {
-    border-color: var(--statix-accent) !important;
-
-    background: var(--statix-hover) !important;
-
-    transform: translateY(-2px);
-
-    box-shadow:
-        0 12px 28px rgba(10, 30, 65, .12) !important;
-}
-
-
-/*
-   Remove Streamlit's normal button focus appearance.
-*/
-
-div[class*="st-key-"][class*="stock_card_"] button:focus {
-    border-color: var(--statix-accent) !important;
-
-    box-shadow:
-        0 0 0 2px
-        color-mix(
-            in srgb,
-            var(--statix-accent) 25%,
-            transparent
-        ) !important;
-}
-
-
-/* =========================================================
-   Card typography
-   ========================================================= */
-
-div[class*="st-key-"][class*="stock_card_"] button p {
-    color: var(--statix-text) !important;
-    margin: 0 !important;
-    line-height: 1.45 !important;
-}
-
-div[class*="st-key-"][class*="stock_card_"] button strong {
-    font-size: 1.25rem;
-    font-weight: 780;
-}
-
-div[class*="st-key-"][class*="stock_card_"] button em {
-    color: var(--statix-muted);
-    font-style: normal;
-    font-size: .86rem;
-}
-
-
-/*
-   Markdown image / sparkline.
-*/
-
-div[class*="st-key-"][class*="stock_card_"] button img {
-    width: 100% !important;
-    max-width: 100% !important;
-    height: 78px !important;
-    max-height: 78px !important;
-    object-fit: fill !important;
-    display: block !important;
-    margin-top: 7px !important;
-}
-
-
-/* =========================================================
-   Bottom navigation
-   ========================================================= */
-
-.statix-bottom-spacer {
-    height: 4.5rem;
-}
-
-
-/*
-   Keep the four native buttons evenly distributed.
-*/
-
-div[data-testid="stHorizontalBlock"] {
-    gap: .7rem;
-}
-
-
-/*
-   Bottom nav is visually fixed using sticky positioning.
-   It remains part of the same Streamlit page/session.
-*/
-
-div[data-testid="stHorizontalBlock"]:has(
-    button[kind="primary"]
-) {
-}
-
-
-/*
-    Scope the fixed position to the navigation container so card rows
-    remain in the normal page flow.
-*/
-
-div[class*="st-key-bottom_nav"] div[data-testid="stHorizontalBlock"] {
-    position: fixed;
-
-    left: 0;
-    right: 0;
-    bottom: 0;
-
-    z-index: 999;
-
-    padding:
-        10px
-        max(20px, calc((100vw - 1480px) / 2));
-
-    background: var(--statix-bottom);
-
-    border-top:
-        1px solid
-        var(--statix-border);
-
-    backdrop-filter: blur(18px);
-    -webkit-backdrop-filter: blur(18px);
-}
-
-
-/* =========================================================
-   Normal Streamlit buttons
-   ========================================================= */
-
-button[kind="secondary"] {
-    border-radius: 8px;
-}
-
-
-/* =========================================================
-   Metrics
-   ========================================================= */
-
-[data-testid="stMetricValue"] {
-    font-variant-numeric: tabular-nums;
-}
-
-
-/* =========================================================
-   Mobile
-   ========================================================= */
-
-@media (max-width: 700px) {
-
-    div[class*="st-key-"][class*="stock_card_"] {
-        flex-basis: 330px;
-        min-width: 330px;
-        width: 330px;
-    }
-
-    div[class*="st-key-"][class*="stock_card_"] button {
-        width: 330px !important;
-        min-width: 330px !important;
-    }
-
-    .block-container {
-        padding-left: 1rem;
-        padding-right: 1rem;
-    }
-}
-
-</style>
-""",
+        <style>
+
+        :root {
+            --statix-bg:#f3f7ff;
+            --statix-border:rgba(20,43,82,.14);
+            --statix-text:#102040;
+            --statix-muted:#5d6d89;
+            --statix-accent:#4159a8;
+            --statix-hover:rgba(55,77,145,.08);
+        }
+
+        @media (prefers-color-scheme:dark) {
+            :root {
+                --statix-bg:#081426;
+                --statix-border:rgba(157,180,222,.16);
+                --statix-text:#e7eefc;
+                --statix-muted:#91a3c2;
+                --statix-accent:#7f96e8;
+                --statix-hover:rgba(126,149,225,.08);
+            }
+        }
+
+        .stApp {
+            background:var(--statix-bg);
+            color:var(--statix-text);
+        }
+
+        .block-container {
+            max-width:1500px;
+            padding-top:2rem;
+            padding-bottom:2rem;
+        }
+
+        /* Horizontal card scrolling */
+
+        .statix-scroll-row {
+            display:flex;
+            overflow-x:auto;
+            overflow-y:hidden;
+            gap:18px;
+            width:100%;
+            padding:4px 4px 18px;
+            margin-bottom:22px;
+            scrollbar-width:thin;
+        }
+
+        .statix-scroll-row::-webkit-scrollbar {
+            height:7px;
+        }
+
+        /* Individual card */
+
+        .statix-card {
+            width:100%;
+            min-height:250px;
+            box-sizing:border-box;
+            padding:22px 24px;
+            background:transparent;
+            border:1px solid var(--statix-border);
+            border-radius:10px;
+            transition:
+                border-color .15s ease,
+                background .15s ease,
+                transform .15s ease;
+        }
+
+        .statix-card:hover {
+            border-color:var(--statix-accent);
+            background:var(--statix-hover);
+            transform:translateY(-2px);
+        }
+
+        .statix-card-head {
+            display:flex;
+            justify-content:space-between;
+            gap:16px;
+        }
+
+        .statix-ticker {
+            font-size:1.3rem;
+            font-weight:760;
+            letter-spacing:-.02em;
+        }
+
+        .statix-name {
+            margin-top:3px;
+            color:var(--statix-muted);
+            font-size:.88rem;
+            white-space:nowrap;
+            overflow:hidden;
+            text-overflow:ellipsis;
+        }
+
+        .statix-arrow {
+            color:var(--statix-muted);
+            font-size:1.15rem;
+        }
+
+        .statix-card-stats {
+            display:flex;
+            justify-content:space-between;
+            align-items:baseline;
+            margin-top:22px;
+            font-size:.98rem;
+            font-variant-numeric:tabular-nums;
+        }
+
+        .statix-card-stats b {
+            font-size:1.4rem;
+        }
+
+        .statix-chart {
+            height:105px;
+            margin-top:17px;
+            color:var(--statix-accent);
+            opacity:.92;
+        }
+
+        .statix-spark {
+            width:100%;
+            height:100%;
+        }
+
+        .statix-card-prediction {
+            color:var(--statix-muted);
+            font-size:.82rem;
+            margin-top:12px;
+            line-height:1.45;
+        }
+
+        /*
+        The Streamlit button beside each card is the actual
+        navigation control. Make it visually minimal.
+        */
+
+        div[data-testid="stButton"] button {
+            border-radius:8px;
+        }
+
+        /* Bottom navigation */
+
+        .statix-bottom-spacer {
+            height:80px;
+        }
+
+        [data-testid="stHorizontalBlock"] {
+            align-items:stretch;
+        }
+
+        [data-testid="stMetricValue"] {
+            font-variant-numeric:tabular-nums;
+        }
+
+        @media (max-width:700px) {
+
+            .statix-card {
+                min-height:225px;
+                padding:19px 20px;
+            }
+
+            .statix-card-stats b {
+                font-size:1.25rem;
+            }
+
+        }
+
+        </style>
+        """,
         unsafe_allow_html=True,
     )

@@ -5,7 +5,7 @@ import streamlit as st
 from src.auth import ensure_authenticated, current_user
 from src.config import APP_NAME
 from src.storage.database import get_settings
-from src.ui.components import bottom_nav, inject_theme_css
+from src.ui.components import bottom_navigation, inject_theme_css
 
 
 st.set_page_config(
@@ -33,26 +33,41 @@ st.session_state.setdefault(
     settings.get("provider", "auto"),
 )
 
-# -------------------------------------------------------------------
-# Internal app navigation
-#
-# IMPORTANT:
-# We intentionally do NOT use browser URLs for navigation.
-# The whole app remains one Streamlit page/session.
-# -------------------------------------------------------------------
 
-st.session_state.setdefault("page", "home")
-st.session_state.setdefault("selected_ticker", None)
+params = st.query_params
 
-page = st.session_state["page"]
+url_page = params.get("page")
+url_ticker = params.get("ticker")
+
+valid_pages = {
+    "home",
+    "stocks",
+    "discover",
+    "settings",
+}
 
 
-def go_to(page_name: str):
-    st.session_state["page"] = page_name
+if url_page in valid_pages:
+    st.session_state["page"] = url_page
+
+elif "page" not in st.session_state:
+    st.session_state["page"] = "home"
+
+
+if url_ticker:
+    st.session_state["selected_ticker"] = str(
+        url_ticker
+    ).upper()
+
+
+page = st.session_state.get("page", "home")
 
 
 with st.sidebar:
-    st.markdown('<div class="brand">Statix</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="brand">Statix</div>',
+        unsafe_allow_html=True,
+    )
 
     user = current_user()
 
@@ -66,29 +81,39 @@ with st.sidebar:
     )
 
 
-# -------------------------------------------------------------------
-# Main content
-# -------------------------------------------------------------------
+labels = {
+    "home": "Home",
+    "stocks": "Stocks",
+    "discover": "Discover",
+    "settings": "Settings",
+}
 
+
+# Page content first.
 if page == "home":
-    exec(open("src/ui/home_tab.py").read(), globals())
+    exec(
+        open("src/ui/home_tab.py").read(),
+        globals(),
+    )
 
 elif page == "stocks":
-    exec(open("src/ui/stocks_tab.py").read(), globals())
+    exec(
+        open("src/ui/stocks_tab.py").read(),
+        globals(),
+    )
 
 elif page == "discover":
-    exec(open("src/ui/discover_tab.py").read(), globals())
+    exec(
+        open("src/ui/discover_tab.py").read(),
+        globals(),
+    )
 
 elif page == "settings":
-    exec(open("src/ui/settings_tab.py").read(), globals())
+    exec(
+        open("src/ui/settings_tab.py").read(),
+        globals(),
+    )
 
 
-# -------------------------------------------------------------------
-# Fixed application navigation
-#
-# This is rendered AFTER the page so it stays visually at the bottom.
-# It uses native Streamlit buttons, so navigation is guaranteed to
-# trigger a Streamlit rerun rather than browser navigation.
-# -------------------------------------------------------------------
-
-bottom_nav(page)
+# Native Streamlit navigation.
+bottom_navigation(page, labels)
