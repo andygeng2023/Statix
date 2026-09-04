@@ -52,7 +52,12 @@ def score(value, decimals=2):
         return "—"
 
 
-def _sparkline_svg(df: pd.DataFrame | None, width=640, height=120) -> str:
+def _sparkline_svg(
+    df: pd.DataFrame | None,
+    expected_return: float | None = None,
+    width=640,
+    height=120,
+) -> str:
     if df is None or df.empty or "close" not in df.columns:
         return ""
 
@@ -79,6 +84,19 @@ def _sparkline_svg(df: pd.DataFrame | None, width=640, height=120) -> str:
         y = height - 8 - (height - 16) * (value - lo) / span
         points.append(f"{x:.1f},{y:.1f}")
 
+    forecast = ""
+    if expected_return is not None and len(values) >= 2:
+        forecast_value = values[-1] * (1 + float(expected_return))
+        forecast_x = width - 4
+        forecast_y = height - 8 - (height - 16) * (forecast_value - lo) / span
+        forecast_y = max(8, min(height - 8, forecast_y))
+        forecast = (
+            f'<line x1="{points[-1].split(",")[0]}" '
+            f'y1="{points[-1].split(",")[1]}" x2="{forecast_x:.1f}" '
+            f'y2="{forecast_y:.1f}" stroke="#d97706" stroke-width="2.4" '
+            f'stroke-dasharray="7 6" stroke-linecap="round" />'
+        )
+
     return (
         f'<svg class="statix-spark" xmlns="http://www.w3.org/2000/svg" '
         f'viewBox="0 0 {width} {height}" preserveAspectRatio="none" '
@@ -86,6 +104,7 @@ def _sparkline_svg(df: pd.DataFrame | None, width=640, height=120) -> str:
         f'<polyline points="{" ".join(points)}" fill="none" '
         f'stroke="currentColor" stroke-width="2.4" '
         f'stroke-linecap="round" stroke-linejoin="round" />'
+        f"{forecast}"
         f"</svg>"
     )
 
@@ -108,7 +127,7 @@ def card_html(
     safe_name = html.escape(name or symbol, quote=True)
     stock_url = f"?page=stocks&amp;ticker={quote(symbol)}"
 
-    spark = _sparkline_svg(df)
+    spark = _sparkline_svg(df, expected_return=expected_return)
 
     prediction = ""
 
@@ -123,7 +142,7 @@ def card_html(
 
         if expected_return is not None:
             pieces.append(
-                f"Expected {pct(expected_return * 100)}"
+                f"5D outlook {pct(expected_return * 100)}"
             )
 
         prediction = (
@@ -135,16 +154,16 @@ def card_html(
     return f"""
     <style>
         .statix-card-link {{ display:block; width:232px; min-width:232px; color:inherit; text-decoration:none; }}
-        .statix-card {{ box-sizing:border-box; width:232px; min-height:215px; padding:16px 18px; border:1px solid rgba(20,43,82,.22); border-radius:10px; color:#102040; }}
+        .statix-card {{ box-sizing:border-box; width:232px; min-height:235px; padding:16px 18px; border:1px solid rgba(20,43,82,.22); border-radius:10px; color:#102040; background:#f3f7ff; }}
         .statix-card-head {{ display:flex; justify-content:space-between; gap:16px; }}
         .statix-ticker {{ font-size:1.15rem; font-weight:760; }}
         .statix-name {{ margin-top:3px; color:#5d6d89; font-size:.88rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
         .statix-card-stats {{ display:flex; justify-content:space-between; align-items:baseline; margin-top:16px; font-size:.98rem; }}
         .statix-card-stats b {{ font-size:1.2rem; }}
-        .statix-chart {{ height:92px; margin-top:12px; color:#4159a8; }}
+        .statix-chart {{ display:block; width:100%; height:92px; margin-top:12px; color:#4159a8; }}
         .statix-card-prediction {{ color:#5d6d89; font-size:.82rem; margin-top:12px; line-height:1.45; }}
     </style>
-    <a class="statix-card-link" href="{stock_url}" target="_self">
+    <a class="statix-card-link" href="{stock_url}" target="_top">
     <div class="statix-card">
         <div class="statix-card-head">
             <div>
@@ -171,10 +190,15 @@ def card_row(items: list[dict], key_prefix: str = "card"):
     if not items:
         return
 
-    with st.container(horizontal=True, gap="small"):
+    st.markdown(
+        f"<style>.st-key-card-row-{key_prefix} {{ overflow-x:auto; overflow-y:hidden; flex-wrap:nowrap !important; scrollbar-width:thin; }} "
+        f".st-key-card-row-{key_prefix} > div {{ flex:0 0 248px !important; width:248px !important; min-width:248px !important; }}</style>",
+        unsafe_allow_html=True,
+    )
+    with st.container(horizontal=True, gap="small", key=f"card-row-{key_prefix}"):
         for item in items:
             ticker = str(item["ticker"]).upper()
-            st.html(
+            st.components.v1.html(
                 card_html(
                     ticker=ticker,
                     name=item.get("name"),
@@ -185,7 +209,10 @@ def card_row(items: list[dict], key_prefix: str = "card"):
                     confidence=item.get("confidence"),
                     reliability=item.get("reliability"),
                     expected_return=item.get("expected_return"),
-                )
+                ),
+                width=248,
+                height=260,
+                scrolling=False,
             )
 
 
@@ -265,7 +292,7 @@ def inject_theme_css():
 
         .statix-card {
             width:100%;
-            min-height:215px;
+            min-height:235px;
             box-sizing:border-box;
             padding:16px 18px;
             background:transparent;

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
@@ -123,5 +124,39 @@ else:
             with b: st.metric(t("confidence", lang), score(prediction.get("confidence")))
             with c: st.metric(t("reliability", lang), score(prediction.get("reliability")))
             with d: st.metric(t("expected", lang), pct(prediction.get("expected_return", 0) * 100))
+            st.caption("Model outlook is an estimate, not a guarantee.")
+
+            last_close = float(df["close"].iloc[-1])
+            expected_return = float(prediction.get("expected_return", 0))
+            forecast_dates = pd.bdate_range(start=df.index[-1], periods=6)
+            forecast_values = [
+                last_close + (last_close * expected_return * step / 5)
+                for step in range(6)
+            ]
+            forecast_fig = go.Figure(
+                go.Scatter(
+                    x=forecast_dates,
+                    y=forecast_values,
+                    mode="lines+markers",
+                    line=dict(width=2, dash="dash", color="#d97706"),
+                    marker=dict(size=5),
+                    hovertemplate="%{x|%Y-%m-%d}<br>$%{y:.2f}<extra></extra>",
+                )
+            )
+            forecast_fig.update_layout(
+                height=260,
+                margin=dict(l=8, r=8, t=10, b=10),
+                showlegend=False,
+                yaxis=dict(tickformat=".2f"),
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+            )
+            st.subheader("Model outlook")
+            st.plotly_chart(
+                forecast_fig,
+                use_container_width=True,
+                config={"displayModeBar": False},
+                key=f"forecast_chart_{ticker}",
+            )
         except Exception as exc:
             st.warning(f"Prediction unavailable for {ticker}: {exc}")
