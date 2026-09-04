@@ -1,99 +1,70 @@
 import streamlit as st
 
-from src.config import LANGUAGES
+from src.config import LANGUAGES, TEXT
 from src.storage.database import get_settings, save_settings
 from src.data.providers import PROVIDERS
 
-
 settings = get_settings()
+lang = st.session_state.get("language_preference", settings.get("language", "en"))
 
-language_codes = list(LANGUAGES.values())
+st.title(TEXT.get(lang, TEXT["en"]).get("settings", "Settings"))
+
 language_names = list(LANGUAGES.keys())
+language_codes = list(LANGUAGES.values())
+current_index = language_codes.index(lang) if lang in language_codes else 0
 
-current_language = settings.get("language", "en")
-
-if current_language not in language_codes:
-    current_language = "en"
-
-current_language_index = language_codes.index(current_language)
-
-st.subheader("Settings")
-
-# ---------------------------------------------------------
-# Language
-# ---------------------------------------------------------
-
-selected_language_name = st.selectbox(
+selected_name = st.selectbox(
     "Language",
     language_names,
-    index=current_language_index,
+    index=current_index,
 )
 
-selected_language = LANGUAGES[selected_language_name]
+selected_language = LANGUAGES[selected_name]
 
-# ---------------------------------------------------------
-# Provider
-# ---------------------------------------------------------
+if selected_language != lang:
+    save_settings(selected_language, settings.get("provider", "auto"))
+    st.session_state["language_preference"] = selected_language
+    st.rerun()
 
-current_provider = settings.get("provider", "auto")
-
+current_provider = st.session_state.get(
+    "provider_preference",
+    settings.get("provider", "auto"),
+)
 if current_provider not in PROVIDERS:
     current_provider = "auto"
 
-provider_index = PROVIDERS.index(current_provider)
+provider_labels = {
+    "auto": "Automatic fallback",
+    "quantdash": "QuantDash",
+    "akshare": "AKShare",
+    "yfinance": "Yahoo Finance",
+}
 
 selected_provider = st.selectbox(
     "Market-data provider",
     PROVIDERS,
-    index=provider_index,
-    format_func=lambda value: {
-        "auto": "Automatic fallback",
-        "quantdash": "QuantDash",
-        "akshare": "AKShare",
-        "tushare": "TuShare",
-        "yfinance": "Yahoo Finance",
-    }.get(value, value),
+    index=PROVIDERS.index(current_provider),
+    format_func=lambda x: provider_labels.get(x, x),
 )
 
-st.caption(
-    "Automatic order: QuantDash → AKShare → TuShare → yfinance"
-)
+if selected_provider != current_provider:
+    save_settings(selected_language, selected_provider)
+    st.session_state["provider_preference"] = selected_provider
+    st.rerun()
 
-# ---------------------------------------------------------
-# Identity
-# ---------------------------------------------------------
+st.caption("Automatic order: QuantDash → AKShare → yfinance")
 
-st.subheader("Identity")
-
+st.subheader(TEXT.get(lang, TEXT["en"]).get("identity", "Identity"))
 user = getattr(st, "user", None)
-
 if user is not None and getattr(user, "is_logged_in", False):
-    email = getattr(user, "email", None)
-    name = getattr(user, "name", None)
-
-    if name:
-        st.write(name)
-
-    if email:
-        st.caption(email)
-
+    if getattr(user, "name", None):
+        st.write(user.name)
+    if getattr(user, "email", None):
+        st.caption(user.email)
     if st.button("Sign out"):
         st.logout()
 else:
     st.caption("Not signed in.")
 
-# ---------------------------------------------------------
-# Save
-# ---------------------------------------------------------
-
-if st.button("Save settings", type="primary"):
-    save_settings(
-        selected_language,
-        selected_provider,
-    )
-
-    st.session_state["language_preference"] = selected_language
-    st.session_state["provider_preference"] = selected_provider
-
-    st.success("Settings saved.")
-    st.rerun()
+st.subheader("Model")
+st.caption("Train the model in Codespaces, commit the generated artifact, then redeploy Streamlit Cloud.")

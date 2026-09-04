@@ -2,19 +2,16 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import os
-
 import pandas as pd
 import yfinance as yf
 
-
-PROVIDERS = ["auto", "quantdash", "akshare", "tushare", "yfinance"]
+PROVIDERS = ["auto", "quantdash", "akshare", "yfinance"]
 
 
 def _secret(name: str, default=None):
     try:
         import streamlit as st
-        value = st.secrets.get(name, default)
-        return value
+        return st.secrets.get(name, default)
     except Exception:
         return os.getenv(name, default)
 
@@ -27,189 +24,82 @@ def selected_provider() -> str:
             return str(value).lower()
     except Exception:
         pass
-
-    return str(
-        _secret("provider", os.getenv("STATIX_PROVIDER", "auto"))
-    ).lower()
+    return str(_secret("provider", "auto")).lower()
 
 
 def _normalize(df: pd.DataFrame) -> pd.DataFrame:
     if df is None or df.empty:
         return pd.DataFrame()
-
     df = df.copy()
-
     rename = {
-        "Open": "open",
-        "High": "high",
-        "Low": "low",
-        "Close": "close",
-        "Volume": "volume",
-        "日期": "date",
-        "开盘": "open",
-        "最高": "high",
-        "最低": "low",
-        "收盘": "close",
-        "成交量": "volume",
+        "Open": "open", "High": "high", "Low": "low",
+        "Close": "close", "Volume": "volume", "Adj Close": "close",
+        "日期": "date", "开盘": "open", "最高": "high",
+        "最低": "low", "收盘": "close", "成交量": "volume",
         "trade_date": "date",
     }
-
     df = df.rename(columns=rename)
-
     if "date" in df.columns:
         df.index = pd.to_datetime(df["date"], errors="coerce")
-
-    if not isinstance(df.index, pd.DatetimeIndex):
+    else:
         df.index = pd.to_datetime(df.index, errors="coerce")
-
     required = ["open", "high", "low", "close", "volume"]
-
-    if not all(column in df.columns for column in required):
+    if not all(c in df.columns for c in required):
         return pd.DataFrame()
+    df[required] = df[required].apply(pd.to_numeric, errors="coerce")
+    return df[required].dropna(subset=["close"]).sort_index()
 
-    df[required] = df[required].apply(
-        pd.to_numeric,
-        errors="coerce",
-    )
-
-    return (
-        df[required]
-        .dropna(subset=["close"])
-        .sort_index()
-    )
-
-
-# ---------------------------------------------------------
-# QuantDash
-# ---------------------------------------------------------
 
 def _quantdash():
     key = _secret("quantdash_api_key", "")
-
     if not key:
         return None
-
     try:
         from quantdash import QuantDash
-        return QuantDash(api_key=key)
+        return QuantDash(api_key=str(key))
     except Exception:
         return None
 
 
-def quantdash_history(ticker: str, limit: int = 1500) -> pd.DataFrame:
-    client = _quantdash()
+def _qd_symbol(ticker: str) -> str:
+    symbol = ticker.upper().strip()
+    if "." not in symbol and symbol.isalpha():
+        return f"{symbol}.US"
+    return symbol
 
+
+def quantdash_history(ticker: str, limit: int = 2500) -> pd.DataFrame:
+    client = _quantdash()
     if client is None:
         return pd.DataFrame()
-
     try:
-        symbol = ticker.upper()
-
-        # QuantDash uses market suffixes such as:
-        # AAPL.US, 600519.SH, 000001.SZ
-        if symbol.isalpha() and "." not in symbol:
-            symbol = f"{symbol}.US"
-
         result = client.klines.get(
-            symbol,
+            _qd_symbol(ticker),
             period="1d",
-            count=min(limit, 5000),
+            count=min(int(limit), 5000),
             adjust="forward",
             to_dataframe=True,
         )
-
         return _normalize(result)
-
     except Exception:
         return pd.DataFrame()
 
 
 def quantdash_quote(ticker: str) -> dict:
-    client = _quantdash()
-
-    if client is None:
-        return {}
-
-    try:
-        symbol = ticker.upper()
-
-        if symbol.isalpha() and "." not in symbol:
-            symbol = f"{symbol}.US"
-
-        # QuantDash quote response is normalized defensively.
-        result = client.quotes.get(
-            symbols=[symbol],
-            to_dataframe=True,
-        )
-
-        if result is None or result.empty:
-            return {}
-
-        row = result.iloc[0]
-
-        def first(*names):
-            for name in names:
-                if name in result.columns and pd.notna(row[name]):
-                    return row[name]
-            return None
-
-        price = first(
-            "price",
-            "last",
-            "last_price",
-            "close",
-            "最新价",
-        )
-
-        if price is None:
-            return {}
-
-        change = first(
-            "change_pct",
-            "change_percent",
-            "pct_change",
-            "涨跌幅",
-        )
-
-        return {
-            "ticker": ticker.upper(),
-            "price": float(price),
-            "change_pct": float(change) if change is not None else None,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-            "provider": "quantdash",
-        }
-
-    except Exception:
-        return {}
+    # QuantDash's documented quote example is universe-based. To keep
+    # the interactive UI fast, quote requests use Yahoo and QuantDash
+    # remains available for historical data.
+    return {}
 
 
-# ---------------------------------------------------------
-# AKShare
-# ---------------------------------------------------------
-
-def akshare_history(ticker: str, limit: int = 1500) -> pd.DataFrame:
+def akshare_history(ticker: str, limit: int = 2500) -> pd.DataFrame:
     try:
         import akshare as ak
-
-        symbol = ticker.upper()
-
-        if "." in symbol:
-            symbol = symbol.split(".")[0]
-
-        if symbol.isdigit():
-            result = ak.stock_zh_a_hist(
-                symbol=symbol,
-                period="daily",
-                adjust="qfq",
-            )
-        else:
-            result = ak.stock_us_daily(
-                symbol=symbol,
-                adjust="qfq",
-            )
-
+        symbol = ticker.upper().split(".")[0]
+        if not symbol.isdigit():
+            return pd.DataFrame()
+        result = ak.stock_zh_a_hist(symbol=symbol, period="daily", adjust="qfq")
         return _normalize(result.tail(limit))
-
     except Exception:
         return pd.DataFrame()
 
@@ -217,227 +107,115 @@ def akshare_history(ticker: str, limit: int = 1500) -> pd.DataFrame:
 def akshare_quote(ticker: str) -> dict:
     try:
         import akshare as ak
-
         symbol = ticker.upper().split(".")[0]
-
         if not symbol.isdigit():
             return {}
-
         data = ak.stock_zh_a_spot_em()
-
-        row = data[
-            data["代码"].astype(str) == symbol
-        ]
-
+        row = data[data["代码"].astype(str) == symbol]
         if row.empty:
             return {}
-
         item = row.iloc[0]
-
         return {
             "ticker": ticker.upper(),
             "price": float(item["最新价"]),
             "change_pct": float(item["涨跌幅"]),
+            "name": str(item.get("名称", ticker.upper())),
             "updated_at": datetime.now(timezone.utc).isoformat(),
             "provider": "akshare",
         }
-
     except Exception:
         return {}
 
 
-# ---------------------------------------------------------
-# TuShare
-# ---------------------------------------------------------
-
-def tushare_history(ticker: str, limit: int = 1500) -> pd.DataFrame:
-    token = _secret("tushare_token", "")
-
-    if not token:
-        return pd.DataFrame()
-
-    try:
-        import tushare as ts
-
-        pro = ts.pro_api(token)
-
-        code = ticker.upper()
-
-        if "." not in code:
-            code = (
-                code + ".SH"
-                if code.startswith("6")
-                else code + ".SZ"
-            )
-
-        data = pro.daily(
-            ts_code=code,
-        )
-
-        if data.empty:
-            return pd.DataFrame()
-
-        data = data.sort_values("trade_date").tail(limit)
-
-        return _normalize(data)
-
-    except Exception:
-        return pd.DataFrame()
-
-
-def tushare_quote(ticker: str) -> dict:
-    return {}
-
-
-# ---------------------------------------------------------
-# Yahoo
-# ---------------------------------------------------------
-
-def yahoo_history(
-    ticker: str,
-    period: str = "5y",
-) -> pd.DataFrame:
+def yahoo_history(ticker: str, period: str = "5y") -> pd.DataFrame:
     try:
         data = yf.download(
-            ticker.upper(),
-            period=period,
-            interval="1d",
-            auto_adjust=True,
-            progress=False,
-            threads=False,
+            ticker.upper(), period=period, interval="1d",
+            auto_adjust=True, progress=False, threads=False,
         )
-
         if data is None or data.empty:
             return pd.DataFrame()
-
         if isinstance(data.columns, pd.MultiIndex):
             data.columns = data.columns.get_level_values(0)
-
-        data.columns = [
-            str(column).lower()
-            for column in data.columns
-        ]
-
+        data.columns = [str(c).lower() for c in data.columns]
         return _normalize(data)
-
     except Exception:
         return pd.DataFrame()
 
 
 def yahoo_quote(ticker: str) -> dict:
     try:
-        info = getattr(
-            yf.Ticker(ticker.upper()),
-            "fast_info",
-            {},
-        ) or {}
-
-        price = (
-            info.get("last_price")
-            or info.get("regular_market_price")
-        )
-
+        symbol = ticker.upper()
+        t = yf.Ticker(symbol)
+        info = getattr(t, "fast_info", {}) or {}
+        price = info.get("last_price") or info.get("regular_market_price")
         previous = info.get("previous_close")
 
         if price is None:
-            history = yahoo_history(ticker, "5d")
-
-            if history.empty:
+            data = yahoo_history(symbol, "5d")
+            if data.empty:
                 return {}
-
-            price = float(history["close"].iloc[-1])
-
-            previous = (
-                float(history["close"].iloc[-2])
-                if len(history) > 1
-                else None
-            )
+            price = float(data["close"].iloc[-1])
+            previous = float(data["close"].iloc[-2]) if len(data) > 1 else None
 
         change = None
-
         if previous not in (None, 0):
-            change = (
-                (float(price) - float(previous))
-                / float(previous)
-                * 100
-            )
+            change = (float(price) - float(previous)) / float(previous) * 100
+
+        name = symbol
+        try:
+            name = getattr(t, "info", {}).get("longName") or getattr(t, "info", {}).get("shortName") or symbol
+        except Exception:
+            pass
 
         return {
-            "ticker": ticker.upper(),
+            "ticker": symbol,
             "price": float(price),
             "change_pct": change,
+            "name": name,
             "updated_at": datetime.now(timezone.utc).isoformat(),
             "provider": "yfinance",
         }
-
     except Exception:
         return {}
 
 
-# ---------------------------------------------------------
-# Provider routing
-# ---------------------------------------------------------
-
 def _provider_order():
     provider = selected_provider()
-
     if provider != "auto":
         return [provider]
-
-    return [
-        "quantdash",
-        "akshare",
-        "tushare",
-        "yfinance",
-    ]
+    return ["quantdash", "akshare", "yfinance"]
 
 
 def get_quote(ticker: str) -> dict:
+    # Yahoo is the fast quote layer. Other configured providers are used
+    # for markets they handle well; Yahoo remains the final fallback.
     functions = {
         "quantdash": quantdash_quote,
         "akshare": akshare_quote,
-        "tushare": tushare_quote,
         "yfinance": yahoo_quote,
     }
-
     for provider in _provider_order():
-        function = functions.get(provider)
-
-        if function is None:
-            continue
-
-        result = function(ticker)
-
-        if result:
-            return result
-
+        fn = functions.get(provider)
+        if fn:
+            result = fn(ticker)
+            if result:
+                return result
     return {}
 
 
-def get_history(
-    ticker: str,
-    period: str = "5y",
-    limit: int = 1500,
-) -> pd.DataFrame:
-
+def get_history(ticker: str, period: str = "5y", limit: int = 2500) -> pd.DataFrame:
     functions = {
         "quantdash": quantdash_history,
         "akshare": akshare_history,
-        "tushare": tushare_history,
         "yfinance": lambda x, l: yahoo_history(x, period),
     }
-
     for provider in _provider_order():
-        function = functions.get(provider)
-
-        if function is None:
-            continue
-
-        result = function(ticker, limit)
-
-        if result is not None and not result.empty:
-            return result
-
+        fn = functions.get(provider)
+        if fn:
+            result = fn(ticker, limit)
+            if result is not None and not result.empty:
+                return result.tail(limit)
     return pd.DataFrame()
 
 

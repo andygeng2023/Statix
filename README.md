@@ -1,52 +1,119 @@
-# Statix Production 2.0
+# Statix
 
-## Architecture
-- One Streamlit app with four top-level tabs: Home, Stocks, Discover, Settings.
-- Stocks contains search + persistent user watchlist cards + stock detail.
-- Discover contains the persistent scanner queue and recommendation cards.
-- Settings controls language, provider preference, and identity display.
-- Market data fallback: AKShare -> QuantDash (if configured) -> TuShare -> yfinance.
-- SEC is used for U.S. security discovery/metadata fallback; it is not a live price feed.
-- Scanner worker runs as a separate always-on process and uses PostgreSQL as a durable queue.
+Statix is a Streamlit stock-research dashboard with four top-level areas: Home, Stocks, Discover, and Settings.
 
-## Python
-Use Python 3.14. Current Streamlit documentation supports Python 3.10-3.14, and current Streamlit releases include Python 3.14 support.
+## Provider architecture
 
-## Install
+Automatic order:
+
+1. QuantDash
+2. AKShare
+3. yfinance
+
+TuShare has been removed.
+
+QuantDash uses its official Python SDK and API key. It does not require a manually configured base URL or endpoint paths.
+
+## Important model change
+
+The previous model used five noisy daily-return classes and had an inference mismatch: training averaged each 64-day sequence, while inference sent all 64 rows to the classifier and read only the first result.
+
+This version:
+
+- uses three classes: Bearish / Neutral / Bullish
+- uses the same 64-day sequence aggregation during training and inference
+- trains on 10 years of daily data
+- automatically expands the starter universe to the current S&P 500 when the local universe has fewer than 100 symbols
+- downloads training data in Yahoo Finance batches
+- uses class balancing and a larger ensemble
+- refuses to load the old incompatible model artifact
+
+Reliability is a model-quality score derived from validation accuracy and current confidence. It is not a probability that a prediction will be profitable.
+
+## Local setup
+
+Python 3.14 is supported.
+
 ```bash
-python3.14 -m venv .venv
+python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 pip install -r requirements.txt
+python -m compileall -q .
 ```
 
-Windows activation: `.venv\Scripts\activate`
+Copy `.streamlit/secrets.toml.example` to `.streamlit/secrets.toml` and fill in your API key/database settings.
 
-## Local secrets
-Copy `.streamlit/secrets.toml.example` to `.streamlit/secrets.toml`. Never commit the real file.
+Run:
 
-## Train
-```bash
-python -m training.train
-```
-This creates `artifacts/statix_model.joblib`. The model is a fast global tabular time-series ensemble, deliberately chosen over a heavyweight neural network for low-latency inference and easier Python 3.14 deployment.
-
-## Run app
 ```bash
 streamlit run app.py
 ```
 
-## Run worker
+## Train the model
+
+The training script automatically expands the tiny starter universe to the S&P 500 list.
+
+Default:
+
+- 500 symbols maximum
+- 10 years of daily Yahoo Finance history
+- 64-day sequence
+- 5-day prediction horizon
+
+Run:
+
 ```bash
-python scanner_worker.py
+python -m training.train
 ```
-Run the worker on a persistent service, not inside Streamlit Community Cloud.
 
-## Production database
-Use managed PostgreSQL and put the connection string in Streamlit Secrets and the worker's environment.
+To change the training size:
 
-## QuantDash
-This release includes a generic QuantDash HTTP adapter, but I could not verify a public official QuantDash API contract from authoritative documentation. Configure its base URL, API key, and paths from the actual QuantDash service/account you use; do not assume the placeholder endpoints are universal.
+```bash
+STATIX_TRAIN_MAX_SYMBOLS=500 python -m training.train
+```
 
-## Data provider notes
-yfinance is intended by its maintainers for research/personal use, so obtain appropriately licensed data before commercial/public deployment.
+To use another period supported by Yahoo Finance:
+
+```bash
+STATIX_TRAIN_PERIOD=10y python -m training.train
+```
+
+The output is:
+
+```text
+artifacts/statix_model.joblib
+artifacts/model_meta.json
+```
+
+Commit both:
+
+```bash
+git add artifacts/statix_model.joblib artifacts/model_meta.json
+git commit -m "Add Statix v3 model"
+git push
+```
+
+Streamlit Community Cloud will redeploy from GitHub.
+
+## Why the old 31.44% reliability does not carry over
+
+The old artifact was trained on only about 40 symbols and used five classes. A five-class classifier has a much harder validation problem than a three-class classifier. More importantly, its sequence representation was inconsistent between training and inference.
+
+Do not edit the reliability number manually. Retrain the v3 model and inspect the reported validation accuracy, validation RMSE, training windows, validation windows, and usable symbol count.
+
+## Persistent Discover scanner
+
+The scanner uses PostgreSQL as a durable queue/result store and runs as a separate worker process.
+
+Streamlit Community Cloud is the web app host; it is not an always-on background worker. Run `scanner_worker.py` on a separate always-on host using the same database credentials and model artifact.
+
+## Google sign-in
+
+Set `require_auth = true` and configure the `[auth]` section in Streamlit secrets with your OIDC provider. For Google, the redirect URI must match:
+
+```text
+https://YOUR-APP-NAME.streamlit.app/oauth2callback
+```
+
+Keep API keys, OAuth secrets, and database passwords out of Git.
