@@ -17,9 +17,7 @@ lang = st.session_state.get(
 
 
 st.markdown(f"# {t('home', lang)}")
-st.caption(
-    "Market overview, saved symbols and model signals."
-)
+st.caption(t("overview", lang))
 
 
 def card_data(ticker, period="6mo"):
@@ -127,7 +125,7 @@ card_row(
 # DISCOVER
 # ---------------------------------------
 
-st.subheader("Discover")
+st.subheader(t("discover", lang))
 
 discover_items = []
 for row in latest_rows[:16]:
@@ -150,7 +148,7 @@ for row in latest_rows[:16]:
 if discover_items:
     card_row(discover_items, key_prefix="home_discover")
 else:
-    st.info("No completed scan yet.")
+    st.info(t("no_scan", lang))
 
 
 # ---------------------------------------
@@ -170,6 +168,8 @@ if watchlist:
         ),
         key_prefix="home_watchlist",
     )
+else:
+    st.info(f"{t('search', lang)}: {t('watchlist', lang)}")
 
 
 # ---------------------------------------

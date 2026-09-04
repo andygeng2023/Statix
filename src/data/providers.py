@@ -348,6 +348,7 @@ def get_quote(ticker: str) -> dict:
         "yfinance": yahoo_quote,
     }
 
+    merged = {}
     for provider in _provider_order():
         function = functions.get(provider)
 
@@ -357,9 +358,11 @@ def get_quote(ticker: str) -> dict:
         result = function(ticker)
 
         if result:
-            return result
+            merged = {**merged, **{key: value for key, value in result.items() if value is not None}}
+            if all(merged.get(field) is not None for field in ("price", "change_pct", "open", "high", "low")):
+                break
 
-    return {}
+    return merged
 
 
 def get_history(

@@ -11,11 +11,11 @@ settings = get_settings()
 lang = st.session_state.get("language_preference", settings.get("language", "en"))
 
 st.markdown(f"# {t('discover', lang)}")
-st.caption("Model-ranked signals from the persistent scanner.")
+st.caption(t("scanner_caption", lang))
 
 job, rows = latest_scan()
 status = job_status()
-limit = st.select_slider("Universe size", options=[100, 250, 500, 1000, 1500, 2000], value=500)
+limit = st.select_slider(t("universe_size", lang), options=[100, 250, 500, 1000, 1500, 2000], value=500)
 
 if not job and (not status or status.status not in {"queued", "running"}):
     enqueue_scan(limit)
@@ -23,12 +23,12 @@ if not job and (not status or status.status not in {"queued", "running"}):
 if st.button(t("queue", lang), type="primary"):
     jid = enqueue_scan(limit)
     if jid:
-        st.success(f"Scan job #{jid} queued.")
+        st.success(f"{t('scan_job', lang)} #{jid}")
     else:
-        st.error("Persistent storage is unavailable.")
+        st.error(t("storage_unavailable", lang))
 
 if status:
-    st.caption(f"Job #{status.id}: {status.status}")
+    st.caption(f"{t('job_status', lang)} #{status.id}: {status.status}")
 
 area_symbols = {
     "Top stocks": ["NVDA", "MSFT", "AAPL", "AMZN", "GOOGL", "META", "AVGO", "TSLA"],
@@ -38,11 +38,19 @@ area_symbols = {
     "Consumer": ["AMZN", "WMT", "COST", "HD", "MCD", "NKE", "SBUX", "TJX"],
     "ETFs": ["SPY", "QQQ", "DIA", "IWM", "XLK", "XLF", "XLE", "ARKK"],
 }
+area_labels = {
+    "Top stocks": t("area_top_stocks", lang),
+    "Technology": t("area_technology", lang),
+    "Healthcare": t("area_healthcare", lang),
+    "Financials": t("area_financials", lang),
+    "Consumer": t("area_consumer", lang),
+    "ETFs": t("area_etfs", lang),
+}
 
-st.subheader("Top stocks by area")
-area = st.selectbox("Area", list(area_symbols), label_visibility="collapsed")
+st.subheader(t("top_by_area", lang))
+selected_area = st.selectbox(t("area", lang), list(area_symbols), format_func=lambda value: area_labels[value], label_visibility="collapsed")
 area_items = []
-for ticker in area_symbols[area]:
+for ticker in area_symbols[selected_area]:
     q = quote(ticker)
     area_items.append(
         {
@@ -80,7 +88,7 @@ if job and rows:
 
     bullish = [row for row in rows if str(row.get("signal", "")).lower() == "bullish"]
     if bullish:
-        st.subheader("Bullish signals")
+        st.subheader(t("bullish_signals", lang))
         card_row(
             [
                 {
@@ -99,4 +107,4 @@ if job and rows:
             key_prefix="discover_bullish",
         )
 else:
-    st.info("No completed scan yet.")
+    st.info(t("no_scan", lang))

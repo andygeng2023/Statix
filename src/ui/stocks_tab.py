@@ -18,7 +18,7 @@ settings = get_settings()
 lang = st.session_state.get("language_preference", settings.get("language", "en"))
 
 st.markdown(f"# {t('stocks', lang)}")
-search = st.text_input(t("search", lang), placeholder="Apple, Aple, NVDA, 000001...")
+search = st.text_input(t("search", lang), placeholder="Apple, NVDA, 000001...")
 
 if search.strip():
     results = search_stocks(search)
@@ -36,7 +36,7 @@ if search.strip():
                 "change_pct": q.get("change_pct"),
                 "df": history(symbol, "3mo"),
             })
-        st.caption(f"{len(items)} relevant result(s)")
+        st.caption(f"{len(items)} {t('relevant_results', lang)}")
         card_row(
         items,
         key_prefix="stocks_search",
@@ -46,7 +46,7 @@ st.divider()
 st.subheader(t("watchlist", lang))
 watchlist = get_watchlist()
 if not watchlist:
-    st.info(f"{t('search', lang)}: {t('watchlist', lang)}")
+    st.info(t("search_watchlist", lang))
 else:
     items = []
     for ticker in watchlist:
@@ -66,7 +66,7 @@ else:
 # remains inside Statix rather than opening another browser tab.
 ticker = st.session_state.get("selected_ticker")
 if not ticker:
-    st.info("Select a stock by clicking any stock card.")
+    st.info(t("select_stock", lang))
     st.stop()
 
 record_view(ticker)
@@ -99,27 +99,27 @@ if q:
     with d: st.metric("Low", money(q.get("low")))
 
 if df is not None and not df.empty:
-    st.subheader("Price history")
+    st.subheader(t("price_history", lang))
     fig = go.Figure(go.Scatter(x=df.index, y=df["close"], mode="lines", line=dict(width=2), hovertemplate="%{x|%Y-%m-%d}<br>$%{y:.2f}<extra></extra>"))
     fig.update_layout(height=400, margin=dict(l=8,r=8,t=10,b=10), showlegend=False, hovermode="x unified", yaxis=dict(tickformat=".2f"), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False}, key=f"detail_chart_{ticker}")
 else:
-    st.warning("Historical data is unavailable for this symbol.")
+    st.warning(t("historical_unavailable", lang))
 
 st.subheader(t("model", lang))
 model = load_model()
 if model is None:
     st.info(t("no_model", lang))
 elif df is None or df.empty:
-    st.info("Historical data is required for prediction.")
+    st.info(t("prediction_data", lang))
 else:
     market = history("SPY", "5y")
     features, _ = create_features(df, market, target=False)
     missing = [x for x in model.feature_columns if x not in features.columns]
     if missing:
-        st.error("The trained model does not match the current feature set. Retrain it.")
+        st.error(t("model_mismatch", lang))
     elif len(features) < 64:
-        st.info("Not enough recent history for a 64-day prediction window.")
+        st.info(t("not_enough_history", lang))
     else:
         try:
             X = features[model.feature_columns].tail(64).to_numpy(dtype=float)
@@ -129,7 +129,7 @@ else:
             with b: st.metric(t("confidence", lang), score(prediction.get("confidence")))
             with c: st.metric(t("reliability", lang), score(prediction.get("reliability")))
             with d: st.metric(t("expected", lang), pct(prediction.get("expected_return", 0) * 100))
-            st.caption("Model outlook is an estimate, not a guarantee.")
+            st.caption(t("forecast_note", lang))
 
             last_close = float(df["close"].iloc[-1])
             expected_return = float(prediction.get("expected_return", 0))
@@ -156,7 +156,7 @@ else:
                 paper_bgcolor="rgba(0,0,0,0)",
                 plot_bgcolor="rgba(0,0,0,0)",
             )
-            st.subheader("Model outlook")
+            st.subheader(t("model_outlook", lang))
             st.plotly_chart(
                 forecast_fig,
                 use_container_width=True,
@@ -164,4 +164,4 @@ else:
                 key=f"forecast_chart_{ticker}",
             )
         except Exception as exc:
-            st.warning(f"Prediction unavailable for {ticker}: {exc}")
+            st.warning(f"{t('prediction_unavailable', lang)} for {ticker}: {exc}")

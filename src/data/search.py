@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import difflib
 import os
 import re
 
@@ -158,21 +157,6 @@ def search_stocks(query):
             add(item)
             if len(rows) >= 20:
                 return rows
-
-    # Fuzzy matching makes small typos useful: Aple -> Apple.
-    candidates = list(directory.values())
-    scored = []
-    for item in candidates:
-        symbol = _normalize_text(item["symbol"])
-        name = _normalize_text(item["name"])
-        score_symbol = difflib.SequenceMatcher(None, nq, symbol).ratio()
-        score_name = difflib.SequenceMatcher(None, nq, name).ratio()
-        score = max(score_symbol, score_name)
-        if score >= 0.48:
-            scored.append((score, item))
-
-    for _, item in sorted(scored, key=lambda x: x[0], reverse=True)[:20]:
-        add(item)
 
     if not rows and q.replace(".", "").replace("-", "").isalnum() and validate_symbol(q.upper()):
         add({

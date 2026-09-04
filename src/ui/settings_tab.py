@@ -48,14 +48,14 @@ if user is not None and getattr(user, "is_logged_in", False):
         st.write(user.name)
     if getattr(user, "email", None):
         st.caption(user.email)
-    if st.button("Sign out", key="settings_sign_out"):
+    if st.button(t("sign_out", lang), key="settings_sign_out"):
         st.logout()
 else:
-    st.caption("Not signed in.")
+    st.caption(t("not_signed_in", lang))
 
 if st.button(t("save", lang), type="primary", key="settings_save"):
     save_settings(selected_language, selected_provider)
     st.session_state["language_preference"] = selected_language
     st.session_state["provider_preference"] = selected_provider
-    st.success("Settings saved.")
+    st.success(t("settings_saved", lang))
     st.rerun()
