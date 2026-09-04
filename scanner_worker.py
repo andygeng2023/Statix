@@ -3,8 +3,8 @@ from __future__ import annotations
 import time
 import pandas as pd
 
-from src.config import MAX_SCAN, SEQUENCE_LENGTH
-from src.storage.database import claim_job, finish_job
+from src.config import MAX_SCAN, ROOT, SEQUENCE_LENGTH
+from src.storage.database import claim_job, finish_job, job_limit
 from src.data.market import get_history
 from src.data.providers import selected_provider
 from src.models.features import create_features
@@ -12,7 +12,7 @@ from src.models.model import load_model
 
 
 def universe(limit):
-    path = "training/universe.txt"
+    path = ROOT / "training" / "universe.txt"
     rows = [
         x.strip().upper()
         for x in open(path, encoding="utf-8")
@@ -40,7 +40,7 @@ def run(job_id):
         )
 
     rows = []
-    for ticker in universe(2000):
+    for ticker in universe(job_limit(job_id)):
         try:
             d = get_history(ticker, "2y", 600)
             if len(d) < SEQUENCE_LENGTH:

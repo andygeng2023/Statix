@@ -91,30 +91,19 @@ labels = {
 }
 
 
-# Page content first.
-if page == "home":
-    exec(
-        open("src/ui/home_tab.py").read(),
-        globals(),
-    )
+@st.fragment(run_every="60s")
+def render_page():
+    if page == "home":
+        exec(open("src/ui/home_tab.py").read(), globals())
+    elif page == "stocks":
+        exec(open("src/ui/stocks_tab.py").read(), globals())
+    elif page == "discover":
+        exec(open("src/ui/discover_tab.py").read(), globals())
+    elif page == "settings":
+        exec(open("src/ui/settings_tab.py").read(), globals())
 
-elif page == "stocks":
-    exec(
-        open("src/ui/stocks_tab.py").read(),
-        globals(),
-    )
 
-elif page == "discover":
-    exec(
-        open("src/ui/discover_tab.py").read(),
-        globals(),
-    )
-
-elif page == "settings":
-    exec(
-        open("src/ui/settings_tab.py").read(),
-        globals(),
-    )
+render_page()
 
 
 # Native Streamlit navigation.

@@ -80,8 +80,9 @@ def _sparkline_svg(df: pd.DataFrame | None, width=640, height=120) -> str:
         points.append(f"{x:.1f},{y:.1f}")
 
     return (
-        f'<svg class="statix-spark" viewBox="0 0 {width} {height}" '
-        f'preserveAspectRatio="none" aria-hidden="true">'
+        f'<svg class="statix-spark" xmlns="http://www.w3.org/2000/svg" '
+        f'viewBox="0 0 {width} {height}" preserveAspectRatio="none" '
+        f'aria-hidden="true" style="display:block;width:100%;height:100%;">'
         f'<polyline points="{" ".join(points)}" fill="none" '
         f'stroke="currentColor" stroke-width="2.4" '
         f'stroke-linecap="round" stroke-linejoin="round" />'
@@ -132,7 +133,7 @@ def card_html(
         )
 
     return f"""
-    <a class="statix-card-link" href="{stock_url}">
+    <a class="statix-card-link" href="{stock_url}" target="_self">
     <div class="statix-card">
         <div class="statix-card-head">
             <div>
@@ -147,7 +148,7 @@ def card_html(
             <span>{pct(change_pct)}</span>
         </div>
 
-        {f'<div class="statix-chart">{spark}</div>' if spark else ""}
+        {f'<div class="statix-chart" style="height:76px;">{spark}</div>' if spark else ""}
 
         {prediction}
     </div>
@@ -183,18 +184,20 @@ def bottom_navigation(page: str, labels: dict[str, str]):
         unsafe_allow_html=True,
     )
 
-    tabs = []
-    for key, label in labels.items():
-        active = " statix-bottom-tab-active" if page == key else ""
-        tabs.append(
-            f'<a class="statix-bottom-tab{active}" '
-            f'href="?page={quote(key)}">{html.escape(label)}</a>'
-        )
-
-    st.markdown(
-        '<nav class="statix-bottom-nav">' + "".join(tabs) + "</nav>",
-        unsafe_allow_html=True,
-    )
+    with st.container(key="statix-bottom-nav"):
+        cols = st.columns(len(labels), gap="small")
+        for col, key in zip(cols, labels):
+            with col:
+                if st.button(
+                    labels[key],
+                    key=f"bottom_nav_{key}",
+                    use_container_width=True,
+                    type="primary" if page == key else "secondary",
+                ):
+                    st.session_state["page"] = key
+                    st.session_state.pop("selected_ticker", None)
+                    st.query_params.clear()
+                    st.rerun()
 
 
 def inject_theme_css():
@@ -330,7 +333,7 @@ def inject_theme_css():
             height:80px;
         }
 
-        .statix-bottom-nav {
+        .st-key-statix-bottom-nav {
             position:fixed;
             z-index:1000;
             left:0;

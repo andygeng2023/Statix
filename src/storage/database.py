@@ -76,6 +76,10 @@ def enqueue_scan(limit):
   existing=s.query(ScanJob).filter(ScanJob.status.in_(["queued","running"])).order_by(ScanJob.id.desc()).first()
   if existing:return existing.id
   j=ScanJob(status="queued",limit=min(int(limit),2000),requested_by=uid());s.add(j);s.commit();return j.id
+def job_limit(job_id):
+ if not ensure_db():return 500
+ with Session() as s:
+  j=s.get(ScanJob,job_id); return j.limit if j else 500
 def latest_scan():
  if not ensure_db():return None,[]
  with Session() as s:
