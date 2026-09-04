@@ -16,7 +16,7 @@ lang = st.session_state.get(
 )
 
 
-st.markdown("# Home")
+st.markdown(f"# {t('home', lang)}")
 st.caption(
     "Market overview, saved symbols and model signals."
 )

@@ -10,7 +10,7 @@ from src.data.search import security_name
 settings = get_settings()
 lang = st.session_state.get("language_preference", settings.get("language", "en"))
 
-st.markdown("# Discover")
+st.markdown(f"# {t('discover', lang)}")
 st.caption("Model-ranked signals from the persistent scanner.")
 
 job, rows = latest_scan()

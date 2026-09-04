@@ -17,7 +17,7 @@ from src.ui.components import card_row, money, pct, score, t
 settings = get_settings()
 lang = st.session_state.get("language_preference", settings.get("language", "en"))
 
-st.markdown("# Stocks")
+st.markdown(f"# {t('stocks', lang)}")
 search = st.text_input(t("search", lang), placeholder="Apple, Aple, NVDA, 000001...")
 
 if search.strip():
@@ -46,7 +46,7 @@ st.divider()
 st.subheader(t("watchlist", lang))
 watchlist = get_watchlist()
 if not watchlist:
-    st.info("Search for a symbol to add it to your watchlist.")
+    st.info(f"{t('search', lang)}: {t('watchlist', lang)}")
 else:
     items = []
     for ticker in watchlist:
@@ -75,9 +75,21 @@ q = quote(ticker)
 df = history(ticker, "5y")
 name = security_name(ticker)
 
-st.markdown(f"# {ticker}")
-if name and name.upper() != ticker.upper():
-    st.caption(name)
+title_col, action_col = st.columns([5, 2], vertical_alignment="center")
+with title_col:
+    st.markdown(f"# {ticker}")
+    if name and name.upper() != ticker.upper():
+        st.caption(name)
+
+watched = is_watched(ticker)
+with action_col:
+    if watched:
+        if st.button(t("remove", lang), key="detail_remove", use_container_width=True):
+            remove_from_watchlist(ticker)
+            st.rerun()
+    elif st.button(t("watch", lang), key="detail_watch", type="primary", use_container_width=True):
+        add_to_watchlist(ticker)
+        st.rerun()
 
 if q:
     a, b, c, d = st.columns(4)
@@ -93,13 +105,6 @@ if df is not None and not df.empty:
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False}, key=f"detail_chart_{ticker}")
 else:
     st.warning("Historical data is unavailable for this symbol.")
-
-if is_watched(ticker):
-    if st.button(t("remove", lang), key="detail_remove"):
-        remove_from_watchlist(ticker); st.rerun()
-else:
-    if st.button(t("watch", lang), key="detail_watch", type="primary"):
-        add_to_watchlist(ticker); st.rerun()
 
 st.subheader(t("model", lang))
 model = load_model()

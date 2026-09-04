@@ -5,7 +5,7 @@ import streamlit as st
 from src.auth import ensure_authenticated, current_user
 from src.config import APP_NAME
 from src.storage.database import get_settings
-from src.ui.components import bottom_navigation, inject_theme_css
+from src.ui.components import bottom_navigation, inject_theme_css, t
 
 
 st.set_page_config(
@@ -84,10 +84,10 @@ with st.sidebar:
 
 
 labels = {
-    "home": "Home",
-    "stocks": "Stocks",
-    "discover": "Discover",
-    "settings": "Settings",
+    "home": t("home", lang),
+    "stocks": t("stocks", lang),
+    "discover": t("discover", lang),
+    "settings": t("settings", lang),
 }
 
 

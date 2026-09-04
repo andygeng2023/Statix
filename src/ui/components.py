@@ -273,6 +273,25 @@ def inject_theme_css():
             display:none;
         }
 
+        div[data-testid="stButton"] > button {
+            min-height:42px;
+            border-radius:8px;
+            border-color:rgba(65,89,168,.35);
+            color:var(--statix-text);
+            font-weight:650;
+        }
+
+        div[data-testid="stButton"] > button[kind="primary"] {
+            background:var(--statix-accent);
+            border-color:var(--statix-accent);
+            color:#ffffff;
+        }
+
+        div[data-testid="stButton"] > button:hover {
+            border-color:var(--statix-accent);
+            box-shadow:0 4px 12px rgba(65,89,168,.2);
+        }
+
         .block-container {
             max-width:1500px;
             padding-top:2rem;
