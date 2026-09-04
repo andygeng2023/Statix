@@ -5,7 +5,7 @@ import streamlit as st
 from src.auth import ensure_authenticated, current_user
 from src.config import APP_NAME
 from src.storage.database import get_settings
-from src.ui.components import inject_theme_css
+from src.ui.components import bottom_nav_html, inject_theme_css
 
 st.set_page_config(page_title=APP_NAME, page_icon="📈", layout="wide", initial_sidebar_state="collapsed")
 inject_theme_css()
@@ -39,11 +39,7 @@ with st.sidebar:
     st.caption("Model outputs are research signals, not guarantees or financial advice.")
 
 labels = {"home":"Home", "stocks":"Stocks", "discover":"Discover", "settings":"Settings"}
-nav_html = "".join(
-    f'<a class="{"active" if page == key else ""}" href="?page={key}">{label}</a>'
-    for key, label in labels.items()
-)
-st.markdown(f'<nav class="statix-bottom-nav">{nav_html}</nav>', unsafe_allow_html=True)
+st.html(bottom_nav_html(page, labels), unsafe_allow_javascript=True)
 
 if page == "home":
     exec(open("src/ui/home_tab.py").read(), globals())
