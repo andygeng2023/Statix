@@ -59,11 +59,11 @@ yte = np.asarray(yte, dtype=int)
 rtr = np.asarray(rtr, dtype=float)
 rte = np.asarray(rte, dtype=float)
 
- # Build per-symbol sequences is unnecessary because the model consumes compact rolling feature vectors; keep chronological date split.
- for g in frames:
-  X,y,r=seqs(g,cols); split=int(len(X)*.8); Xtr+=X[:split];ytr+=y[:split];rtr+=r[:split];Xte+=X[split:];yte+=y[split:];rte+=r[split:]
- Xtr=np.asarray(Xtr);Xte=np.asarray(Xte); ytr=np.asarray(ytr);yte=np.asarray(yte);rtr=np.asarray(rtr);rte=np.asarray(rte)
- logit,hgb,reg,mean,std=train_global(Xtr,ytr,rtr,cols)
- p=(logit.predict_proba((Xte-mean)/(std+1e-8))+hgb.predict_proba((Xte-mean)/(std+1e-8)))/2; pred=p.argmax(1); rp=reg.predict((Xte-mean)/(std+1e-8)); metrics={"training_rows":len(Xtr),"validation_rows":len(Xte),"validation_accuracy":float(accuracy_score(yte,pred)),"validation_rmse":float(np.sqrt(mean_squared_error(rte,rp))),"symbols":len(frames),"model_version":MODEL_VERSION}
- save_model(logit,hgb,reg,cols,mean,std,metrics);print(metrics)
+# Build per-symbol sequences is unnecessary because the model consumes compact rolling feature vectors; keep chronological date split.
+for g in frames:
+    X,y,r=seqs(g,cols); split=int(len(X)*.8); Xtr+=X[:split];ytr+=y[:split];rtr+=r[:split];Xte+=X[split:];yte+=y[split:];rte+=r[split:]
+    Xtr=np.asarray(Xtr);Xte=np.asarray(Xte); ytr=np.asarray(ytr);yte=np.asarray(yte);rtr=np.asarray(rtr);rte=np.asarray(rte)
+    logit,hgb,reg,mean,std=train_global(Xtr,ytr,rtr,cols)
+    p=(logit.predict_proba((Xte-mean)/(std+1e-8))+hgb.predict_proba((Xte-mean)/(std+1e-8)))/2; pred=p.argmax(1); rp=reg.predict((Xte-mean)/(std+1e-8)); metrics={"training_rows":len(Xtr),"validation_rows":len(Xte),"validation_accuracy":float(accuracy_score(yte,pred)),"validation_rmse":float(np.sqrt(mean_squared_error(rte,rp))),"symbols":len(frames),"model_version":MODEL_VERSION}
+    save_model(logit,hgb,reg,cols,mean,std,metrics);print(metrics)
 if __name__=="__main__":main()
