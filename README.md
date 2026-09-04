@@ -50,6 +50,19 @@ Run:
 streamlit run app.py
 ```
 
+## Public web app
+
+Statix also includes a standalone installable web app. Start it locally with:
+
+```bash
+uvicorn web_app:app --host 0.0.0.0 --port 8000
+```
+
+Deploy the repository to a host that supports Python web services and use the
+included `Procfile`. Open the resulting HTTPS URL on a phone or iPad, then use
+the browser's **Add to Home Screen** action. The scanner worker should run as a
+separate persistent service against the same database.
+
 ## Train the model
 
 The training script automatically expands the tiny starter universe to the S&P 500 list.

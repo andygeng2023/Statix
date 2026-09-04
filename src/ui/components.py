@@ -133,6 +133,17 @@ def card_html(
         )
 
     return f"""
+    <style>
+        .statix-card-link {{ display:block; width:232px; min-width:232px; color:inherit; text-decoration:none; }}
+        .statix-card {{ box-sizing:border-box; width:232px; min-height:215px; padding:16px 18px; border:1px solid rgba(20,43,82,.22); border-radius:10px; color:#102040; }}
+        .statix-card-head {{ display:flex; justify-content:space-between; gap:16px; }}
+        .statix-ticker {{ font-size:1.15rem; font-weight:760; }}
+        .statix-name {{ margin-top:3px; color:#5d6d89; font-size:.88rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
+        .statix-card-stats {{ display:flex; justify-content:space-between; align-items:baseline; margin-top:16px; font-size:.98rem; }}
+        .statix-card-stats b {{ font-size:1.2rem; }}
+        .statix-chart {{ height:92px; margin-top:12px; color:#4159a8; }}
+        .statix-card-prediction {{ color:#5d6d89; font-size:.82rem; margin-top:12px; line-height:1.45; }}
+    </style>
     <a class="statix-card-link" href="{stock_url}" target="_self">
     <div class="statix-card">
         <div class="statix-card-head">
@@ -163,7 +174,7 @@ def card_row(items: list[dict], key_prefix: str = "card"):
     with st.container(horizontal=True, gap="small"):
         for item in items:
             ticker = str(item["ticker"]).upper()
-            st.markdown(
+            st.html(
                 card_html(
                     ticker=ticker,
                     name=item.get("name"),
@@ -174,8 +185,7 @@ def card_row(items: list[dict], key_prefix: str = "card"):
                     confidence=item.get("confidence"),
                     reliability=item.get("reliability"),
                     expected_return=item.get("expected_return"),
-                ),
-                unsafe_allow_html=True,
+                )
             )
 
 
