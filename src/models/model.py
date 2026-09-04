@@ -16,7 +16,7 @@ class StatixModel:
 
 def train_global(X,y,r,features):
  mean=np.nanmean(X,axis=0); std=np.nanstd(X,axis=0); std[std<1e-6]=1; xn=(X-mean)/(std+1e-8)
- clf=make_pipeline(StandardScaler(),LogisticRegression(max_iter=800,multi_class="auto")); clf.fit(xn,y)
+ clf=make_pipeline(StandardScaler(),LogisticRegression(max_iter=800)); clf.fit(xn,y)
  hgb=HistGradientBoostingClassifier(max_iter=180,learning_rate=.055,max_leaf_nodes=31,l2_regularization=.3,random_state=42); hgb.fit(xn,y)
  reg=HistGradientBoostingRegressor(max_iter=180,learning_rate=.055,max_leaf_nodes=31,l2_regularization=.3,random_state=42); reg.fit(xn,r)
  return clf, hgb, reg, mean, std
