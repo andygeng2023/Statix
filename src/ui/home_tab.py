@@ -1,60 +1,85 @@
+from __future__ import annotations
+
 import streamlit as st
 
-from src.data.market import quote, history
-from src.data.search import resolve_name
-from src.storage.database import get_watchlist
-from src.models.model import load_model
-from src.models.features import create_features
-from src.ui.components import stock_card, t
+from src.data.market import history, quote
+from src.data.search import security_name
+from src.storage.database import get_settings, get_watchlist
+from src.ui.components import clickable_card, money, pct, t
 
-lang = st.session_state.get("language_preference", "en")
 
-st.title(t("home", lang))
-st.caption("Fast market overview. Detailed analysis is loaded only when you open a stock.")
+settings = get_settings()
+lang = st.session_state.get("language_preference", settings.get("language", "en"))
 
-def quick_signal(ticker):
-    model = load_model()
-    if model is None:
-        return None
-    df = history(ticker, "2y")
-    if df.empty or len(df) < 64:
-        return None
-    market = history("SPY", "2y")
-    f, _ = create_features(df, market, target=False)
-    if len(f) < 64:
-        return None
-    return model.predict(f[model.feature_columns].tail(64).to_numpy())
+st.markdown("# Home")
+st.caption("Market overview, saved symbols and model signals.")
 
-st.subheader(t("discover_short", lang))
-cols = st.columns(4)
-for c, ticker in zip(cols, ["AAPL", "MSFT", "NVDA", "AMZN"]):
+
+def card_data(ticker, history_period="6mo"):
     q = quote(ticker)
-    with c:
-        st.metric(resolve_name(ticker), q.get("price", "—"), f'{q.get("change_pct", 0):+.2f}%' if q.get("change_pct") is not None else None)
-        st.caption(ticker)
-        if st.button("Open", key=f"home_open_{ticker}", use_container_width=True):
-            st.session_state["selected_ticker"] = ticker
-            st.session_state["active_tab"] = "stocks"
-            st.rerun()
+    df = history(ticker, history_period)
+    return q, df
 
+
+# Keep sections distinct so the same symbol is not repeated across Home.
+watchlist = [str(x).upper() for x in get_watchlist()]
+watch_symbols = set(watchlist)
+
+pulse_symbols = ["SPY", "QQQ", "DIA", "IWM"]
+market_symbols = [x for x in pulse_symbols if x not in watch_symbols]
+
+# ---------------------------------------------------------
+# Market pulse
+# ---------------------------------------------------------
 st.subheader(t("market_pulse", lang))
 cols = st.columns(4)
-for c, ticker in zip(cols, ["SPY", "QQQ", "DIA", "IWM"]):
-    q = quote(ticker)
-    with c:
-        st.metric(ticker, q.get("price", "—"), f'{q.get("change_pct", 0):+.2f}%' if q.get("change_pct") is not None else None)
-        st.caption(q.get("provider", "—"))
 
-wl = get_watchlist()[:4]
-if wl:
+for col, ticker in zip(cols, market_symbols):
+    q, df = card_data(ticker, "3mo")
+    with col:
+        clickable_card(
+            ticker=ticker,
+            name=security_name(ticker),
+            price=q.get("price"),
+            change_pct=q.get("change_pct"),
+            df=df,
+        )
+
+# ---------------------------------------------------------
+# Watchlist
+# ---------------------------------------------------------
+if watchlist:
     st.subheader(t("watch_suggestions", lang))
-    cols = st.columns(min(4, len(wl)))
-    for c, ticker in zip(cols, wl):
-        q = quote(ticker)
-        with c:
-            st.metric(resolve_name(ticker), q.get("price", "—"), f'{q.get("change_pct", 0):+.2f}%' if q.get("change_pct") is not None else None)
-            st.caption(ticker)
-            if st.button("Open", key=f"home_watch_{ticker}", use_container_width=True):
-                st.session_state["selected_ticker"] = ticker
-                st.session_state["active_tab"] = "stocks"
-                st.rerun()
+    cols = st.columns(min(4, len(watchlist)))
+
+    for col, ticker in zip(cols, watchlist[:4]):
+        q, df = card_data(ticker, "6mo")
+        with col:
+            clickable_card(
+                ticker=ticker,
+                name=security_name(ticker),
+                price=q.get("price"),
+                change_pct=q.get("change_pct"),
+                df=df,
+            )
+
+# ---------------------------------------------------------
+# Featured stocks
+# ---------------------------------------------------------
+featured = ["NVDA", "MSFT", "GOOGL", "AMZN"]
+featured = [x for x in featured if x not in watch_symbols and x not in set(market_symbols)]
+
+if featured:
+    st.subheader(t("top_stocks", lang))
+    cols = st.columns(min(4, len(featured)))
+
+    for col, ticker in zip(cols, featured):
+        q, df = card_data(ticker, "6mo")
+        with col:
+            clickable_card(
+                ticker=ticker,
+                name=security_name(ticker),
+                price=q.get("price"),
+                change_pct=q.get("change_pct"),
+                df=df,
+            )

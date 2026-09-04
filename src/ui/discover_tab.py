@@ -1,13 +1,19 @@
+from __future__ import annotations
+
 import streamlit as st
 
-from src.storage.database import enqueue_scan, latest_scan, job_status
-from src.ui.components import t
-from src.data.search import resolve_name
+from src.config import MAX_SCAN
+from src.storage.database import enqueue_scan, job_status, latest_scan, get_settings
+from src.ui.components import clickable_card, t
+from src.data.market import history, quote
+from src.data.search import security_name
 
-lang = st.session_state.get("language_preference", "en")
 
-st.title(t("discover", lang))
-st.caption("Ranked model signals from the persistent scanner. Results are recommendations for research, not guarantees.")
+settings = get_settings() if "get_settings" in globals() else {"language": "en"}
+lang = st.session_state.get("language_preference", settings.get("language", "en"))
+
+st.markdown("# Discover")
+st.caption("Model-ranked signals from the persistent scanner.")
 
 job, rows = latest_scan()
 status = job_status()
@@ -30,23 +36,24 @@ if status:
 
 if job and rows:
     st.subheader(t("latest", lang))
+    cols = st.columns(3)
+
     for i, row in enumerate(rows[:12]):
         ticker = row["ticker"]
-        with st.container(border=True):
-            a, b, c = st.columns([4, 1.5, 1.5])
-            with a:
-                st.markdown(f"### {resolve_name(ticker)}")
-                st.caption(ticker)
-                st.write(row["signal"])
-            with b:
-                st.metric(t("expected", lang), f'{row["expected_return"]*100:+.2f}%')
-                st.metric(t("confidence", lang), f'{row["confidence"]*100:.1f}%')
-            with c:
-                st.metric(t("reliability", lang), f'{row["reliability"]*100:.1f}%')
-                st.caption(row["provider"] or "—")
-            if st.button("Open", key=f"discover_open_{i}_{ticker}", use_container_width=True):
-                st.session_state["selected_ticker"] = ticker
-                st.session_state["active_tab"] = "stocks"
-                st.rerun()
+        q = quote(ticker)
+        df = history(ticker, "6mo")
+
+        with cols[i % 3]:
+            clickable_card(
+                ticker=ticker,
+                name=security_name(ticker),
+                price=q.get("price", row.get("price")),
+                change_pct=q.get("change_pct", row.get("change_pct")),
+                df=df,
+                signal=row.get("signal"),
+                confidence=row.get("confidence"),
+                reliability=row.get("reliability"),
+                expected_return=row.get("expected_return"),
+            )
 else:
-    st.info("No completed scan yet. Queue a scan and keep the worker running.")
+    st.info("No completed scan yet.")
