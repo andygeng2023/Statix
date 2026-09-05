@@ -59,13 +59,12 @@ if search.strip():
         items = []
         for result in results[:16]:
             symbol = result["symbol"].upper()
-            q = quote(symbol)
             items.append({
                 "ticker": symbol,
                 "name": result.get("name") or security_name(symbol),
-                "price": q.get("price"),
-                "change_pct": q.get("change_pct"),
-                "df": history(symbol, "3mo"),
+                "price": None,
+                "change_pct": None,
+                "df": None,
             })
         st.caption(f"{len(items)} {t('relevant_results', lang)}")
         card_row(

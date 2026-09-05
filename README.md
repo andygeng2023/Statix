@@ -82,9 +82,10 @@ training run:
 STATIX_TRAIN_MAX_SYMBOLS=2000 STATIX_TRAIN_PERIOD=10y python -m training.train
 ```
 
-The generated artifact contains the XGBoost and LSTM branches. The application
-loads only this v3 artifact, so detailed predictions remain unavailable until
-this retraining completes successfully and the generated files are committed.
+The generated artifact contains the XGBoost branch. An LSTM branch is optional
+and is added only when a compatible PyTorch build is installed separately. If
+PyTorch cannot load, training still completes with XGBoost and reports that the
+optional LSTM branch was skipped. The application loads only this v3 artifact.
 
 To change the training size:
 

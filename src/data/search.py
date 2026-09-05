@@ -13,6 +13,12 @@ from src.data.providers import validate_symbol
 SEC_URL = "https://www.sec.gov/files/company_tickers_exchange.json"
 
 
+def _cache_data(**kwargs):
+    if st.runtime.exists():
+        return st.cache_data(**kwargs)
+    return lambda function: function
+
+
 def _sec_headers():
     try:
         email = st.secrets.get("SEC_USER_AGENT_EMAIL", "you@example.com")
@@ -24,7 +30,7 @@ def _sec_headers():
     }
 
 
-@st.cache_data(ttl=86400, show_spinner=False)
+@_cache_data(ttl=86400, show_spinner=False)
 def sec_universe():
     try:
         response = requests.get(
@@ -109,7 +115,7 @@ def _normalize_text(value: str) -> str:
     return re.sub(r"[^a-z0-9]", "", str(value).lower())
 
 
-@st.cache_data(ttl=86400, show_spinner=False)
+@_cache_data(ttl=86400, show_spinner=False)
 def _security_directory():
     sec = sec_universe()
     if sec.empty:
@@ -125,7 +131,7 @@ def _security_directory():
     }
 
 
-@st.cache_data(ttl=SEARCH_TTL, max_entries=500, show_spinner=False)
+@_cache_data(ttl=SEARCH_TTL, max_entries=500, show_spinner=False)
 def search_stocks(query):
     q = str(query).strip()
     if not q:
@@ -143,11 +149,22 @@ def search_stocks(query):
         item["symbol"] = symbol
         rows.append(item)
 
-    for item in _qd_search(q) + _yahoo_search(q):
-        add(item)
+    # Exact ticker searches should not wait for the SEC directory download.
+    normalized_query = _normalize_text(q)
+    if (
+        q.strip() == q.strip().upper()
+        and re.fullmatch(r"[A-Z][A-Z0-9.-]{0,5}", q.strip())
+    ):
+        add({
+            "symbol": q.upper(),
+            "name": q.upper(),
+            "exchange": "",
+            "type": "EQUITY",
+        })
+        return rows
 
     directory = _security_directory()
-    nq = _normalize_text(q)
+    nq = normalized_query
 
     # Exact/substring matches against SEC symbol and company name.
     for item in directory.values():
@@ -157,6 +174,19 @@ def search_stocks(query):
             add(item)
             if len(rows) >= 20:
                 return rows
+
+    if rows:
+        return rows[:20]
+
+    for item in _yahoo_search(q):
+        add(item)
+        if len(rows) >= 20:
+            return rows
+
+    for item in _qd_search(q):
+        add(item)
+        if len(rows) >= 20:
+            return rows
 
     if not rows and q.replace(".", "").replace("-", "").isalnum() and validate_symbol(q.upper()):
         add({
@@ -169,7 +199,7 @@ def search_stocks(query):
     return rows[:20]
 
 
-@st.cache_data(ttl=86400, max_entries=2000, show_spinner=False)
+@_cache_data(ttl=86400, max_entries=2000, show_spinner=False)
 def security_name(ticker: str) -> str:
     symbol = str(ticker).upper().strip()
     directory = _security_directory()

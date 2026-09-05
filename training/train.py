@@ -55,17 +55,17 @@ def load_symbols():
     return symbols[:max_symbols]
 
 
-def seqs(frame, cols):
-    a = frame[cols].to_numpy(dtype=float)
+def seqs(frame, cols, max_windows=120):
+    a = frame[cols].to_numpy(dtype=np.float32)
     yy = frame["target"].to_numpy(dtype=int)
-    rr = frame["future_return"].to_numpy(dtype=float)
+    rr = frame["future_return"].to_numpy(dtype=np.float32)
 
-    X, y, r = [], [], []
-    for i in range(SEQ - 1, len(frame)):
-        X.append(a[i - SEQ + 1:i + 1])
-        y.append(yy[i])
-        r.append(rr[i])
-    return X, y, r
+    end_indices = np.arange(SEQ - 1, len(frame))
+    if len(end_indices) > max_windows:
+        selected = np.linspace(0, len(end_indices) - 1, max_windows, dtype=int)
+        end_indices = end_indices[selected]
+    X = np.stack([a[i - SEQ + 1:i + 1] for i in end_indices]).astype(np.float32)
+    return X, yy[end_indices], rr[end_indices]
 
 
 def download_batch(symbols, period=DEFAULT_YEARS):
@@ -140,7 +140,11 @@ def main():
                 if len(frame) < 220:
                     continue
 
-                X, y, r = seqs(frame, cols)
+                X, y, r = seqs(
+                    frame,
+                    cols,
+                    max_windows=int(os.getenv("STATIX_MAX_WINDOWS_PER_SYMBOL", "120")),
+                )
                 if len(X) < 120:
                     continue
 
@@ -164,12 +168,12 @@ def main():
     if not Xtr or not Xte or feature_columns is None:
         raise RuntimeError("No usable training/validation data.")
 
-    Xtr = np.asarray(Xtr, dtype=float)
-    Xte = np.asarray(Xte, dtype=float)
-    ytr = np.asarray(ytr, dtype=int)
-    yte = np.asarray(yte, dtype=int)
-    rtr = np.asarray(rtr, dtype=float)
-    rte = np.asarray(rte, dtype=float)
+    Xtr = np.asarray(Xtr, dtype=np.float32)
+    Xte = np.asarray(Xte, dtype=np.float32)
+    ytr = np.asarray(ytr, dtype=np.int64)
+    yte = np.asarray(yte, dtype=np.int64)
+    rtr = np.asarray(rtr, dtype=np.float32)
+    rte = np.asarray(rte, dtype=np.float32)
 
     print()
     print(f"Training windows:   {len(Xtr)}")

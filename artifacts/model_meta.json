@@ -1,15 +1,15 @@
 {
-  "model_version": "statix-global-ensemble-v3",
+  "model_version": "statix-xgboost-lstm-v3",
   "metrics": {
-    "training_rows": 866725,
-    "validation_rows": 217146,
-    "validation_accuracy": 0.3908522376649812,
-    "validation_rmse": 0.05035745713607367,
-    "symbols": 496,
+    "training_rows": 47904,
+    "validation_rows": 11976,
+    "validation_accuracy": 0.28072812291249166,
+    "validation_rmse": 0.04669321095723899,
+    "symbols": 499,
     "history_period": "10y",
     "sequence_length": 64,
     "classes": 3,
-    "model_version": "statix-global-ensemble-v3"
+    "model_version": "statix-xgboost-lstm-v3"
   },
   "features": [
     "ret_1",

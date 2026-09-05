@@ -125,7 +125,7 @@ def card_html(
 
     safe_symbol = html.escape(symbol, quote=True)
     safe_name = html.escape(name or symbol, quote=True)
-    stock_url = f"?page=stocks&amp;ticker={quote(symbol)}"
+    stock_url = f"/?page=stocks&amp;ticker={quote(symbol)}"
 
     spark = _sparkline_svg(df, expected_return=expected_return)
 
@@ -163,8 +163,8 @@ def card_html(
         .statix-chart {{ display:block; width:100%; height:92px; margin-top:12px; color:#4159a8; }}
         .statix-card-prediction {{ color:#5d6d89; font-size:.82rem; margin-top:12px; line-height:1.45; }}
     </style>
-    <a class="statix-card-link" href="{stock_url}" target="_top">
-    <div class="statix-card">
+    <a class="statix-card-link" href="{stock_url}" target="_top" onclick="window.top.location.href=this.href; return false;">
+    <div class="statix-card" role="link" tabindex="0">
         <div class="statix-card-head">
             <div>
                 <div class="statix-ticker">{safe_symbol}</div>
