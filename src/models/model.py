@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 
 import joblib
 import numpy as np
@@ -14,7 +15,7 @@ from src.config import MODEL_PATH, MODEL_META_PATH
 
 CLASS_NAMES_5 = ["Strong bearish", "Bearish", "Neutral", "Bullish", "Strong bullish"]
 CLASS_NAMES_3 = ["Bearish", "Neutral", "Bullish"]
-MODEL_VERSION = "statix-xgboost-lstm-v3"
+MODEL_VERSION = "statix-walkforward-calibrated-v4"
 SEQ = 64
 
 
@@ -156,7 +157,7 @@ def _clean_training_matrix(X):
     return X
 
 
-def train_global(X, y, r, features):
+def train_global(X, y, r, features, calibration_X=None, calibration_y=None):
     raw_sequences = np.asarray(X, dtype=float)
     if raw_sequences.ndim == 3:
         X = raw_sequences.mean(axis=1)
@@ -181,7 +182,11 @@ def train_global(X, y, r, features):
             eval_metric="mlogloss", random_state=42,
         )
         clf.fit(xn, y)
-        hgb = clf
+        hgb = HistGradientBoostingClassifier(
+            max_iter=220, learning_rate=0.05, max_leaf_nodes=31,
+            l2_regularization=0.3, random_state=42,
+        )
+        hgb.fit(xn, y)
         reg = XGBRegressor(
             n_estimators=260, max_depth=5, learning_rate=0.04,
             subsample=0.85, colsample_bytree=0.85, objective="reg:squarederror",
@@ -202,9 +207,30 @@ def train_global(X, y, r, features):
         )
         reg.fit(xn, r)
 
+    if calibration_X is not None and calibration_y is not None:
+        try:
+            from sklearn.calibration import CalibratedClassifierCV
+            from sklearn.frozen import FrozenEstimator
+            calibration_matrix = np.asarray(calibration_X, dtype=float)
+            if calibration_matrix.ndim == 3:
+                calibration_matrix = calibration_matrix.mean(axis=1)
+            calibration_matrix = _clean_training_matrix(calibration_matrix)
+            calibration_matrix = (calibration_matrix - mean) / (std + 1e-8)
+            calibration_matrix = np.nan_to_num(
+                calibration_matrix, nan=0.0, posinf=10.0, neginf=-10.0
+            )
+            clf = CalibratedClassifierCV(
+                estimator=FrozenEstimator(clf), method="sigmoid"
+            )
+            clf.fit(calibration_matrix, np.asarray(calibration_y, dtype=int))
+            if not hasattr(clf, "calibrated_classifiers_"):
+                raise ValueError("Probability calibrator did not fit")
+        except (ImportError, ValueError, TypeError):
+            pass
+
     lstm_state = None
     lstm_config = None
-    if raw_sequences.ndim == 3:
+    if raw_sequences.ndim == 3 and os.getenv("STATIX_ENABLE_LSTM", "0") == "1":
         try:
             import torch
             from torch import nn
