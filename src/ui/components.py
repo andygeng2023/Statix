@@ -1029,6 +1029,10 @@ def inject_theme_css():
            BOTTOM NAV
         ----------------------------------------- */
 
+        /* -----------------------------------------
+            RESPONSIVE BOTTOM NAVIGATION
+        ----------------------------------------- */
+
         .st-key-statix-bottom-nav {
 
             position:fixed;
@@ -1044,12 +1048,10 @@ def inject_theme_css():
             box-sizing:border-box;
 
             padding:
-                9px
+                8px
                 max(
-                    14px,
-                    calc(
-                        (100vw - 1500px) / 2
-                    )
+                    12px,
+                    calc((100vw - 1500px) / 2)
                 );
 
             background:
@@ -1069,19 +1071,48 @@ def inject_theme_css():
         .st-key-statix-bottom-nav
         [data-testid="stHorizontalBlock"] {
 
+            display:flex;
+
+            width:100%;
+            max-width:100%;
+
+            gap:8px;
+
+            align-items:stretch;
+        }
+
+        .st-key-statix-bottom-nav
+        [data-testid="stHorizontalBlock"] > div {
+
+            flex:1 1 0 !important;
+
+            width:auto !important;
+
+            min-width:0 !important;
+        }
+
+        .st-key-statix-bottom-nav
+        div[data-testid="stButton"] {
+
             width:100%;
         }
 
         .st-key-statix-bottom-nav
         div[data-testid="stButton"] > button {
 
+            width:100%;
+
             min-height:44px;
+
+            padding:
+                8px
+                10px;
 
             border:
                 1px solid
                 transparent;
 
-            border-radius:7px;
+            border-radius:8px;
 
             background:transparent;
 
@@ -1093,6 +1124,14 @@ def inject_theme_css():
             font-size:.88rem;
 
             font-weight:600;
+
+            white-space:nowrap;
+
+            overflow:hidden;
+
+            text-overflow:ellipsis;
+
+            transform:none;
         }
 
         .st-key-statix-bottom-nav
@@ -1150,49 +1189,20 @@ def inject_theme_css():
 
         @media (max-width:700px) {
 
-            .block-container {
-
-                padding-top:1.35rem;
-
-                padding-left:1rem;
-                padding-right:1rem;
-
-                /*
-                 * Slightly more room on mobile because
-                 * the navigation remains visible.
-                 */
-                padding-bottom:135px !important;
-            }
-
-            [data-testid="stHorizontalBlock"]:has(.statix-card-link)
-            > div {
-
-                flex-basis:265px !important;
-
-                width:265px !important;
-                min-width:265px !important;
-                max-width:265px !important;
-            }
-
-            .statix-card {
-
-                min-height:205px;
-
-                padding:
-                    16px
-                    17px;
-            }
-
-            .statix-chart {
-
-                height:78px;
-            }
-
             .st-key-statix-bottom-nav {
 
                 padding:
-                    8px
-                    8px;
+                    7px
+                    6px
+                    calc(
+                        7px + env(safe-area-inset-bottom)
+                    );
+            }
+
+            .st-key-statix-bottom-nav
+            [data-testid="stHorizontalBlock"] {
+
+                gap:4px;
             }
 
             .st-key-statix-bottom-nav
@@ -1200,10 +1210,13 @@ def inject_theme_css():
 
                 min-height:44px;
 
-                padding-left:4px;
-                padding-right:4px;
+                padding:
+                    7px
+                    3px;
 
-                font-size:.78rem;
+                font-size:.74rem;
+
+                border-radius:7px;
             }
         }
 
