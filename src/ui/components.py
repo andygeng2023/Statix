@@ -556,7 +556,7 @@ def inject_theme_css():
         .block-container {
             max-width:1500px;
 
-            padding-top:2rem;
+            padding-top:4rem;
 
             /*
              * IMPORTANT:
