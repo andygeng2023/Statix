@@ -10,6 +10,7 @@ from src.data.search import (
     search_stocks,
     security_name,
 )
+from src.data.news import latest_news
 from src.models.features import create_features
 from src.models.model import load_model
 from src.storage.database import (
@@ -36,6 +37,8 @@ RANGE_PERIODS = {
     "1M": 31,
     "1Y": 365,
     "5Y": 1825,
+    "10Y": 3650,
+    "20Y": 7300,
     "10Y": 3650,
 }
 
@@ -167,6 +170,7 @@ if search.strip():
             symbol = result[
                 "symbol"
             ].upper()
+            current_quote = quote(symbol)
 
             items.append(
                 {
@@ -179,8 +183,8 @@ if search.strip():
                             symbol
                         )
                     ),
-                    "price": None,
-                    "change_pct": None,
+                    "price": current_quote.get("price"),
+                    "change_pct": current_quote.get("change_pct"),
                     "df": None,
                 }
             )
@@ -194,6 +198,10 @@ if search.strip():
             items,
             key_prefix="stocks_search",
         )
+        if any(item.get("price") is None for item in items):
+            if st.button("Refresh search quotes", key="refresh_search_quotes"):
+                st.cache_data.clear()
+                st.rerun()
 
 
 st.divider()
@@ -487,6 +495,14 @@ else:
 st.subheader(
     t("model", lang)
 )
+news_items = latest_news(ticker)
+if news_items:
+    st.subheader("Recent news")
+    for item in news_items:
+        st.markdown(
+            f"- [{item['title']}]({item['url']}) `"
+            f"{item['sentiment']}` · {item['publisher']} · {item['date']}"
+        )
 
 model = load_model()
 
@@ -654,7 +670,7 @@ else:
             horizon_values = prediction.get("horizons", {}).get(selected_horizon, {})
             expected_return = float(horizon_values.get("expected_return", prediction.get("expected_return", 0)))
             forecast_error = float(horizon_values.get("error", 0))
-            horizon_days = {"1D": 1, "5D": 5, "10D": 10, "1M": 21, "6M": 126, "1Y": 252, "5Y": 1260}.get(selected_horizon, 5)
+            horizon_days = {"1D": 1, "5D": 5, "10D": 10, "1M": 21, "6M": 126, "1Y": 252, "5Y": 1260, "10Y": 2520, "20Y": 5040}.get(selected_horizon, 5)
 
             points = min(30, max(2, horizon_days))
             forecast_dates = pd.bdate_range(start=df.index[-1], periods=points + 1)[1:]

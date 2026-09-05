@@ -19,7 +19,7 @@ The v4 pipeline uses:
 - Held-out accuracy, precision, recall, F1, ROC-AUC, Brier score, RMSE, return, and baseline metrics
 - A Kalman and correlation-graph scanner prefilter
 
-The detail screen displays 1D, 5D, 10D, 1M, 6M, 1Y, and 5Y model-derived projections with uncertainty ranges. Longer horizons are projections of the trained 5-day signal, not independently trained forecasts.
+The detail screen displays 1D, 5D, 10D, 1M, 6M, 1Y, 5Y, 10Y, and 20Y model-derived projections with uncertainty ranges. Longer horizons are projections of the trained 5-day signal, not independently trained forecasts.
 
 ## Run Locally
 

@@ -225,6 +225,7 @@ def main():
     ) / 2.0
     predictions = probabilities.argmax(axis=1)
     return_predictions = reg.predict(Xtest_scaled)
+    residuals = np.abs(rtest - return_predictions)
     bullish_probability = probabilities[:, -1]
     test_slices = np.array_split(np.arange(len(ytest)), 3)
     slice_accuracy = [
@@ -248,6 +249,7 @@ def main():
         "test_roc_auc": auc,
         "test_brier": float(brier_score_loss(ytest == 2, bullish_probability)),
         "test_rmse": float(np.sqrt(mean_squared_error(rtest, return_predictions))),
+        "test_error_quantile_90": float(np.quantile(residuals, 0.90)),
         "test_average_predicted_return": float(np.mean(return_predictions)),
         "test_average_actual_return": float(np.mean(rtest)),
         "always_bullish_accuracy": baseline,

@@ -25,6 +25,8 @@ FORECAST_HORIZONS = {
     "6M": 126,
     "1Y": 252,
     "5Y": 1260,
+    "10Y": 2520,
+    "20Y": 5040,
 }
 
 
@@ -170,6 +172,7 @@ class Ensemble:
         horizon_caps = {
             "1D": 0.04, "5D": 0.08, "10D": 0.12, "1M": 0.20,
             "6M": 0.35, "1Y": 0.50, "5Y": 0.80,
+            "10Y": 1.20, "20Y": 1.50,
         }
         forecasts = {}
         for label, periods in FORECAST_HORIZONS.items():
@@ -179,7 +182,10 @@ class Ensemble:
                 -horizon_caps[label],
                 horizon_caps[label],
             ))
-            error = float(1.96 * rmse * np.sqrt(periods / base_periods))
+            empirical_error = float(
+                self.metrics.get("test_error_quantile_90", rmse * 1.645)
+            )
+            error = float(empirical_error * np.sqrt(periods / base_periods))
             forecasts[label] = {
                 "expected_return": expected,
                 "lower": expected - error,
