@@ -121,15 +121,10 @@ def score(
     try:
         number_value = float(value)
 
-        if not np.isfinite(
-            number_value
-        ):
+        if not np.isfinite(number_value):
             return "—"
 
-        return (
-            f"{number_value * 100:."
-            f"{decimals}f}%"
-        )
+        return f"{number_value * 100:.{decimals}f}%"
 
     except (
         TypeError,
