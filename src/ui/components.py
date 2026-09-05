@@ -330,17 +330,35 @@ def _card_html(
 
         prediction_html = (
             '<div class="statix-card-prediction">'
+
+            '<div class="statix-prediction-row">'
+            '<span class="statix-prediction-label">'
+            'Signal'
+            '</span>'
             '<span class="statix-signal">'
             f"{html.escape(str(signal))}"
-            "</span>"
-            '<span class="statix-prediction-meta">'
-            f"Confidence "
+            '</span>'
+            '</div>'
+
+            '<div class="statix-prediction-row">'
+            '<span class="statix-prediction-label">'
+            'Confidence'
+            '</span>'
+            '<span class="statix-prediction-value">'
             f"{score(item.get('confidence'))}"
-            " · "
-            f"Reliability "
+            '</span>'
+            '</div>'
+
+            '<div class="statix-prediction-row">'
+            '<span class="statix-prediction-label">'
+            'Reliability'
+            '</span>'
+            '<span class="statix-prediction-value">'
             f"{score(item.get('reliability'))}"
-            "</span>"
-            "</div>"
+            '</span>'
+            '</div>'
+
+            '</div>'
         )
 
     chart_html = ""
@@ -943,13 +961,13 @@ def inject_theme_css():
 
             display:flex;
 
+            flex-direction:column;
+
             width:100%;
             max-width:100%;
             min-width:0;
 
-            flex-wrap:wrap;
-
-            gap:4px 8px;
+            gap:6px;
 
             margin-top:12px;
 
@@ -958,6 +976,40 @@ def inject_theme_css():
             line-height:1.35;
 
             overflow:hidden;
+        }
+
+        .statix-prediction-row {
+
+            display:flex;
+
+            width:100%;
+            max-width:100%;
+            min-width:0;
+
+            justify-content:space-between;
+
+            align-items:center;
+
+            gap:10px;
+        }
+
+        .statix-prediction-label {
+
+            color:var(--statix-subtext);
+
+            font-weight:500;
+        }
+
+        .statix-signal,
+        .statix-prediction-value {
+
+            color:var(--statix-text);
+
+            font-weight:650;
+
+            text-align:right;
+
+            white-space:nowrap;
         }
 
         .statix-signal {

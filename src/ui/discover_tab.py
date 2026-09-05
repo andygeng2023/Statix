@@ -53,9 +53,24 @@ limit = st.select_slider(
         lang,
     ),
     options=[
+        50,
         100,
+        150,
+        200,
         250,
+        300,
+        350,
+        400,
+        450,
         500,
+        650,
+        700,
+        750,
+        800,
+        850,
+        900,
+        950,
+        1000,
     ],
     value=500,
 )
@@ -215,186 +230,6 @@ if scan_completed:
             "The scanner completed, "
             "but returned no qualifying results."
         )
-
-
-# =========================================================
-# AREA DATA
-# =========================================================
-
-area_symbols = {
-
-    "Top stocks": [
-        "NVDA",
-        "MSFT",
-        "AAPL",
-        "AMZN",
-        "GOOGL",
-        "META",
-        "AVGO",
-        "TSLA",
-    ],
-
-    "Technology": [
-        "NVDA",
-        "MSFT",
-        "AAPL",
-        "AVGO",
-        "ORCL",
-        "AMD",
-        "CRM",
-        "ADBE",
-    ],
-
-    "Healthcare": [
-        "LLY",
-        "UNH",
-        "JNJ",
-        "ABBV",
-        "MRK",
-        "TMO",
-        "ISRG",
-        "PFE",
-    ],
-
-    "Financials": [
-        "JPM",
-        "V",
-        "MA",
-        "BAC",
-        "WFC",
-        "GS",
-        "MS",
-        "BLK",
-    ],
-
-    "Consumer": [
-        "AMZN",
-        "WMT",
-        "COST",
-        "HD",
-        "MCD",
-        "NKE",
-        "SBUX",
-        "TJX",
-    ],
-
-    "ETFs": [
-        "SPY",
-        "QQQ",
-        "DIA",
-        "IWM",
-        "XLK",
-        "XLF",
-        "XLE",
-        "ARKK",
-    ],
-}
-
-
-area_labels = {
-
-    "Top stocks": t(
-        "area_top_stocks",
-        lang,
-    ),
-
-    "Technology": t(
-        "area_technology",
-        lang,
-    ),
-
-    "Healthcare": t(
-        "area_healthcare",
-        lang,
-    ),
-
-    "Financials": t(
-        "area_financials",
-        lang,
-    ),
-
-    "Consumer": t(
-        "area_consumer",
-        lang,
-    ),
-
-    "ETFs": t(
-        "area_etfs",
-        lang,
-    ),
-}
-
-
-# =========================================================
-# TOP BY AREA
-# =========================================================
-
-st.subheader(
-    t(
-        "top_by_area",
-        lang,
-    )
-)
-
-
-selected_area = st.selectbox(
-    t(
-        "area",
-        lang,
-    ),
-    list(
-        area_symbols
-    ),
-    format_func=lambda value:
-        area_labels[value],
-    label_visibility="collapsed",
-)
-
-
-area_items = []
-
-for ticker in area_symbols[
-    selected_area
-]:
-
-    try:
-
-        q = quote(
-            ticker
-        )
-
-        df = history(
-            ticker,
-            "3mo",
-        )
-
-        area_items.append(
-            {
-                "ticker": ticker,
-                "name": security_name(
-                    ticker
-                ),
-                "price": q.get(
-                    "price"
-                ),
-                "change_pct": q.get(
-                    "change_pct"
-                ),
-                "df": df,
-            }
-        )
-
-    except Exception:
-
-        # One unavailable symbol should
-        # not break the entire Discover page.
-        continue
-
-
-card_row(
-    area_items,
-    key_prefix="discover_area",
-)
 
 
 # =========================================================
@@ -628,3 +463,183 @@ else:
                 lang,
             )
         )
+
+# =========================================================
+# AREA DATA
+# =========================================================
+
+area_symbols = {
+
+    "Top stocks": [
+        "NVDA",
+        "MSFT",
+        "AAPL",
+        "AMZN",
+        "GOOGL",
+        "META",
+        "AVGO",
+        "TSLA",
+    ],
+
+    "Technology": [
+        "NVDA",
+        "MSFT",
+        "AAPL",
+        "AVGO",
+        "ORCL",
+        "AMD",
+        "CRM",
+        "ADBE",
+    ],
+
+    "Healthcare": [
+        "LLY",
+        "UNH",
+        "JNJ",
+        "ABBV",
+        "MRK",
+        "TMO",
+        "ISRG",
+        "PFE",
+    ],
+
+    "Financials": [
+        "JPM",
+        "V",
+        "MA",
+        "BAC",
+        "WFC",
+        "GS",
+        "MS",
+        "BLK",
+    ],
+
+    "Consumer": [
+        "AMZN",
+        "WMT",
+        "COST",
+        "HD",
+        "MCD",
+        "NKE",
+        "SBUX",
+        "TJX",
+    ],
+
+    "ETFs": [
+        "SPY",
+        "QQQ",
+        "DIA",
+        "IWM",
+        "XLK",
+        "XLF",
+        "XLE",
+        "ARKK",
+    ],
+}
+
+
+area_labels = {
+
+    "Top stocks": t(
+        "area_top_stocks",
+        lang,
+    ),
+
+    "Technology": t(
+        "area_technology",
+        lang,
+    ),
+
+    "Healthcare": t(
+        "area_healthcare",
+        lang,
+    ),
+
+    "Financials": t(
+        "area_financials",
+        lang,
+    ),
+
+    "Consumer": t(
+        "area_consumer",
+        lang,
+    ),
+
+    "ETFs": t(
+        "area_etfs",
+        lang,
+    ),
+}
+
+
+# =========================================================
+# TOP BY AREA
+# =========================================================
+
+st.subheader(
+    t(
+        "top_by_area",
+        lang,
+    )
+)
+
+
+selected_area = st.selectbox(
+    t(
+        "area",
+        lang,
+    ),
+    list(
+        area_symbols
+    ),
+    format_func=lambda value:
+        area_labels[value],
+    label_visibility="collapsed",
+)
+
+
+area_items = []
+
+for ticker in area_symbols[
+    selected_area
+]:
+
+    try:
+
+        q = quote(
+            ticker
+        )
+
+        df = history(
+            ticker,
+            "3mo",
+        )
+
+        area_items.append(
+            {
+                "ticker": ticker,
+                "name": security_name(
+                    ticker
+                ),
+                "price": q.get(
+                    "price"
+                ),
+                "change_pct": q.get(
+                    "change_pct"
+                ),
+                "df": df,
+            }
+        )
+
+    except Exception:
+
+        # One unavailable symbol should
+        # not break the entire Discover page.
+        continue
+
+
+card_row(
+    area_items,
+    key_prefix="discover_area",
+)
+
