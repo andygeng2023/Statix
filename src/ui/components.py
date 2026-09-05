@@ -333,7 +333,7 @@ def _card_html(
 
             '<div class="statix-prediction-row">'
             '<span class="statix-prediction-label">'
-            'Signal'
+            'Signal: '
             '</span>'
             '<span class="statix-signal">'
             f"{html.escape(str(signal))}"
@@ -342,7 +342,7 @@ def _card_html(
 
             '<div class="statix-prediction-row">'
             '<span class="statix-prediction-label">'
-            'Confidence'
+            'Confidence: '
             '</span>'
             '<span class="statix-prediction-value">'
             f"{score(item.get('confidence'))}"
@@ -351,7 +351,7 @@ def _card_html(
 
             '<div class="statix-prediction-row">'
             '<span class="statix-prediction-label">'
-            'Reliability'
+            'Reliability: '
             '</span>'
             '<span class="statix-prediction-value">'
             f"{score(item.get('reliability'))}"
@@ -702,7 +702,7 @@ def inject_theme_css():
 
             box-sizing:border-box;
 
-            min-height:220px;
+            min-height:260px;
 
             padding:18px 19px;
 
