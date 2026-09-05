@@ -364,6 +364,7 @@ def _card_html(
         '<a '
         'class="statix-card-link" '
         f'href="{card_url}" '
+        'target="_self" '
         'aria-label="Open stock details for '
         f'{html.escape(ticker, quote=True)}" '
         f'data-ticker="{html.escape(ticker, quote=True)}" '

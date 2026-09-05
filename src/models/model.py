@@ -141,6 +141,7 @@ class Ensemble:
         ret = float(self.reg.predict(x)[0])
         if sequence_return is not None:
             ret = 0.55 * ret + 0.45 * float(sequence_return.item())
+        ret = float(np.clip(ret, -0.20, 0.20))
         acc = float(self.metrics.get("validation_accuracy", 0.0))
         rel = float(np.clip(0.55 * conf + 0.45 * acc, 0.0, 1.0))
 
@@ -165,12 +166,19 @@ class Ensemble:
         base_periods = 5.0
         rmse = float(self.metrics.get("test_rmse", self.metrics.get("validation_rmse", 0.03)))
         rmse = max(rmse, 1e-4)
-        daily_return = np.sign(five_day_return) * (
-            abs(1.0 + five_day_return) ** (1.0 / base_periods) - 1.0
-        )
+        daily_return = five_day_return / base_periods
+        horizon_caps = {
+            "1D": 0.04, "5D": 0.08, "10D": 0.12, "1M": 0.20,
+            "6M": 0.35, "1Y": 0.50, "5Y": 0.80,
+        }
         forecasts = {}
         for label, periods in FORECAST_HORIZONS.items():
-            expected = float((1.0 + daily_return) ** periods - 1.0)
+            decay = 0.35 + 0.65 * np.exp(-periods / 126.0)
+            expected = float(np.clip(
+                daily_return * periods * decay,
+                -horizon_caps[label],
+                horizon_caps[label],
+            ))
             error = float(1.96 * rmse * np.sqrt(periods / base_periods))
             forecasts[label] = {
                 "expected_return": expected,
@@ -200,6 +208,7 @@ def train_global(X, y, r, features, calibration_X=None, calibration_y=None):
         X = raw_sequences
     X = _clean_training_matrix(X)
     r = np.nan_to_num(np.asarray(r, dtype=float), nan=0.0, posinf=0.0, neginf=0.0)
+    r = np.clip(r, -0.20, 0.20)
 
     mean = np.mean(X, axis=0)
     std = np.std(X, axis=0)
