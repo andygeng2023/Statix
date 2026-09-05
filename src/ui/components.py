@@ -769,7 +769,7 @@ def inject_theme_css():
             font-size:1.08rem;
             font-weight:720;
 
-            color:#000000;
+            color:#000000 !important;
 
             line-height:1.2;
 
