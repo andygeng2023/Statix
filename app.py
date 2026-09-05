@@ -102,8 +102,7 @@ def render_page():
         exec(open("src/ui/settings_tab.py").read(), globals())
 
 
-render_page()
-
-
-# Native Streamlit navigation.
+# Render navigation first so pages that call st.stop() still expose it.
 bottom_navigation(page, labels)
+
+render_page()
