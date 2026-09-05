@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import html
 import numpy as np
 import pandas as pd
 import streamlit as st
+from urllib.parse import quote
 
 from src.config import TEXT
 
@@ -106,6 +108,33 @@ def _sparkline_svg(
     )
 
 
+def _card_html(item: dict) -> str:
+    ticker = str(item["ticker"]).upper()
+    name = html.escape(str(item.get("name") or ticker), quote=True)
+    href = f"?page=stocks&ticker={quote(ticker)}"
+    spark = _sparkline_svg(item.get("df"), item.get("expected_return"))
+    signal = item.get("signal")
+    details = ""
+    if signal:
+        details = (
+            f'<div class="statix-card-prediction">{html.escape(str(signal))}'
+            f' · Confidence {score(item.get("confidence"))}'
+            f' · Reliability {score(item.get("reliability"))}</div>'
+        )
+    return (
+        f'<a class="statix-card-link" href="{href}">'
+        f'<div class="statix-card">'
+        f'<div class="statix-card-head"><div>'
+        f'<div class="statix-ticker">{html.escape(ticker)}</div>'
+        f'<div class="statix-name">{name}</div></div>'
+        f'<div class="statix-arrow">↗</div></div>'
+        f'<div class="statix-card-stats"><b>{money(item.get("price"))}</b>'
+        f'<span>{pct(item.get("change_pct"))}</span></div>'
+        f'{f"<div class=\"statix-chart\">{spark}</div>" if spark else ""}'
+        f'{details}</div></a>'
+    )
+
+
 def card_row(items: list[dict], key_prefix: str = "card"):
     if not items:
         return
@@ -115,38 +144,15 @@ def card_row(items: list[dict], key_prefix: str = "card"):
         f".st-key-card-row-{key_prefix} > div {{ flex:0 0 248px !important; width:248px !important; min-width:248px !important; }}</style>",
         unsafe_allow_html=True,
     )
-    with st.container(horizontal=True, gap="small", key=f"card-row-{key_prefix}"):
+    with st.container(
+        horizontal=True,
+        horizontal_alignment="left",
+        gap="small",
+        key=f"card-row-{key_prefix}",
+    ):
         for item in items:
             ticker = str(item["ticker"]).upper()
-            with st.container(border=True, key=f"card-{key_prefix}-{ticker}"):
-                if st.button(
-                    f"{ticker}  ↗",
-                    key=f"card-open-{key_prefix}-{ticker}",
-                    use_container_width=True,
-                    type="tertiary",
-                ):
-                    st.session_state["selected_ticker"] = ticker
-                    st.session_state["page"] = "stocks"
-                    st.query_params.update(page="stocks", ticker=ticker)
-                    st.rerun()
-                st.caption(item.get("name") or ticker)
-                stat_col, change_col = st.columns(2)
-                with stat_col:
-                    st.markdown(f"**{money(item.get('price'))}**")
-                with change_col:
-                    st.markdown(pct(item.get("change_pct")))
-                spark = _sparkline_svg(item.get("df"), item.get("expected_return"))
-                if spark:
-                    st.markdown(
-                        f'<div class="statix-chart">{spark}</div>',
-                        unsafe_allow_html=True,
-                    )
-                if item.get("signal"):
-                    st.caption(
-                        f"{item['signal']} · "
-                        f"Confidence {score(item.get('confidence'))} · "
-                        f"Reliability {score(item.get('reliability'))}"
-                    )
+            st.markdown(_card_html(item), unsafe_allow_html=True)
 
 
 def bottom_navigation(page: str, labels: dict[str, str]):
@@ -233,6 +239,15 @@ def inject_theme_css():
 
         /* Individual card */
 
+        .statix-card-link {
+            display:block;
+            flex:0 0 232px;
+            width:232px;
+            min-width:232px;
+            color:inherit;
+            text-decoration:none;
+        }
+
         .statix-card {
             width:100%;
             min-height:235px;
@@ -311,6 +326,20 @@ def inject_theme_css():
             font-size:.82rem;
             margin-top:12px;
             line-height:1.45;
+        }
+
+        [data-testid="stHorizontalBlock"]:has(.statix-card-link) {
+            flex-wrap:nowrap !important;
+            overflow-x:auto;
+            overflow-y:hidden;
+            padding:4px 4px 14px;
+            scrollbar-width:thin;
+        }
+
+        [data-testid="stHorizontalBlock"]:has(.statix-card-link) > div {
+            flex:0 0 232px !important;
+            width:232px !important;
+            min-width:232px !important;
         }
 
         /* Bottom navigation */

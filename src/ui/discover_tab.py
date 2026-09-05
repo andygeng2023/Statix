@@ -60,7 +60,7 @@ for ticker in area_symbols[selected_area]:
     )
 card_row(area_items, key_prefix="discover_area")
 
-if job and rows:
+if rows:
     st.subheader(t("latest", lang))
     items = []
     for row in rows[:16]:
