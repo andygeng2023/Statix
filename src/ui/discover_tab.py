@@ -67,6 +67,17 @@ if st.button(
     use_container_width=False,
 ):
 
+    progress = st.progress(
+        0,
+        text="Preparing scanner...",
+    )
+
+    def update_progress(current, total, message):
+        progress.progress(
+            min(1.0, current / max(1, total)),
+            text=message,
+        )
+
     with st.spinner(
         "Scanning market data..."
     ):
@@ -74,7 +85,8 @@ if st.button(
         try:
 
             scan_results = scan(
-                int(limit)
+                int(limit),
+                progress_callback=update_progress,
             )
 
             # Explicitly copy the returned list into
@@ -96,6 +108,8 @@ if st.button(
                     "latest_scan_rows"
                 ]
             )
+
+            progress.progress(1.0, text="Scanner complete")
 
             st.rerun()
 

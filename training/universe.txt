@@ -1,4 +1,5 @@
-# Starter universe. Replace/extend this file with your licensed scanner universe.
+# Seed symbols. Training expands this file from SEC-listed NYSE/Nasdaq symbols
+# to the requested STATIX_TRAIN_MAX_SYMBOLS count (up to 2,000).
 AAPL
 MSFT
 NVDA

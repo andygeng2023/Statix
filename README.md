@@ -82,6 +82,10 @@ training run:
 STATIX_TRAIN_MAX_SYMBOLS=2000 STATIX_TRAIN_PERIOD=10y python -m training.train
 ```
 
+The seed file at `training/universe.txt` is expanded at runtime from the SEC
+exchange directory to 2,000 unique NYSE/Nasdaq-listed symbols. This keeps the
+training universe current without committing a stale exchange snapshot.
+
 The generated artifact contains the XGBoost branch. An LSTM branch is optional
 and is added only when a compatible PyTorch build is installed separately. If
 PyTorch cannot load, training still completes with XGBoost and reports that the

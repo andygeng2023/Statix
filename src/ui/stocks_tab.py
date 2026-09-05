@@ -539,7 +539,7 @@ else:
             )
         )
 
-    elif len(features) < 64:
+    elif features.empty:
 
         st.info(
             t(
@@ -553,9 +553,9 @@ else:
         try:
 
             X = (
-                features[
-                    model.feature_columns
-                ]
+                features.reindex(
+                    columns=model.feature_columns
+                )
                 .tail(64)
                 .to_numpy(
                     dtype=float

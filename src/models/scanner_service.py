@@ -7,6 +7,7 @@ import pandas as pd
 
 from src.config import MAX_SCAN, ROOT, SCANNER_PREFILTER_LIMIT, SCANNER_RESULT_LIMIT, SEQUENCE_LENGTH
 from src.data.market import get_history
+from src.data.universe import load_universe
 from src.data.providers import selected_provider
 from src.models.features import create_features
 from src.models.model import load_model
@@ -22,23 +23,10 @@ SECTOR_BY_SYMBOL = {
 
 def universe(limit: int) -> list[str]:
     path = Path(ROOT) / "training" / "universe.txt"
-    rows = [
-        value.strip().upper()
-        for value in path.read_text(encoding="utf-8").splitlines()
-        if value.strip() and not value.startswith("#")
-    ]
-    if len(rows) < 100:
-        try:
-            remote = pd.read_csv(
-                "https://raw.githubusercontent.com/datasets/s-and-p-500-companies/main/data/constituents.csv"
-            )
-            rows = remote["Symbol"].astype(str).str.upper().tolist()
-        except Exception:
-            pass
-    return list(dict.fromkeys(rows))[:min(int(limit), MAX_SCAN)]
+    return load_universe(path, min(int(limit), MAX_SCAN))
 
 
-def scan(limit: int) -> list[dict]:
+def scan(limit: int, progress_callback=None) -> list[dict]:
     model = load_model()
     if model is None:
         raise RuntimeError(
@@ -51,7 +39,11 @@ def scan(limit: int) -> list[dict]:
         for ticker in ["SPY", "QQQ", "DIA", "IWM", "XLK", "XLV", "XLF", "XLY", "XLP", "XLE", "XLI"]
     }
     candidates = []
-    for ticker in universe(limit):
+    symbols = universe(limit)
+    total = len(symbols)
+    for index, ticker in enumerate(symbols, start=1):
+        if progress_callback:
+            progress_callback(index, total, f"Loading {ticker}")
         try:
             history = get_history(ticker, "2y", 600)
             if len(history) < SEQUENCE_LENGTH:
@@ -65,6 +57,8 @@ def scan(limit: int) -> list[dict]:
             continue
 
     rows = []
+    if progress_callback:
+        progress_callback(0, max(1, min(len(candidates), SCANNER_PREFILTER_LIMIT)), "Ranking candidates")
     for candidate in prefilter(candidates, SCANNER_PREFILTER_LIMIT):
         features = candidate["features"]
         prediction = model.predict(
@@ -96,6 +90,12 @@ def scan(limit: int) -> list[dict]:
             "provider": selected_provider(),
             "rank_score": rank_score,
         })
+        if progress_callback:
+            progress_callback(
+                len(rows),
+                max(1, min(len(candidates), SCANNER_PREFILTER_LIMIT)),
+                "Scoring candidates",
+            )
 
     rows.sort(key=lambda row: row["rank_score"], reverse=True)
     return rows[:SCANNER_RESULT_LIMIT]

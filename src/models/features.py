@@ -120,7 +120,8 @@ def create_features(stock, market=None, sector=None, horizon=5, target=True):
         "excess_return_1", "excess_return_5", "excess_return_20",
         "target_1", "target_5", "target_20",
     ] if target else [])
-    clean = data.dropna(subset=required).copy()
+    clean = data.dropna(subset=required).copy() if target else data.copy()
     clean[feature_columns] = clean[feature_columns].replace([np.inf, -np.inf], np.nan)
-    clean = clean.dropna(subset=feature_columns)
+    if target:
+        clean = clean.dropna(subset=feature_columns)
     return clean, feature_columns

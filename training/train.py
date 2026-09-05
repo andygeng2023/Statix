@@ -15,6 +15,7 @@ from sklearn.metrics import (
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.data.market import get_history
+from src.data.universe import load_universe
 from src.models.features import create_features
 from src.models.model import train_global, save_model, MODEL_VERSION
 
@@ -49,33 +50,8 @@ def yahoo_symbol(symbol: str) -> str:
 
 
 def load_symbols():
-    local = [
-        x.strip().upper()
-        for x in UNIVERSE.read_text().splitlines()
-        if x.strip() and not x.startswith("#")
-    ]
-
-    # The repository file is a fallback/override. If it is still the tiny
-    # starter universe, automatically expand it with the current S&P list.
-    if len(local) < 100:
-        try:
-            remote = pd.read_csv(
-                "https://raw.githubusercontent.com/datasets/s-and-p-500-companies/main/data/constituents.csv"
-            )
-            local = remote["Symbol"].astype(str).str.upper().tolist()
-        except Exception:
-            pass
-
-    # Keep a deterministic, de-duplicated universe.
-    seen = set()
-    symbols = []
-    for s in local:
-        if s not in seen:
-            seen.add(s)
-            symbols.append(s)
-
     max_symbols = int(os.getenv("STATIX_TRAIN_MAX_SYMBOLS", "500"))
-    return symbols[:max_symbols]
+    return load_universe(UNIVERSE, max_symbols)
 
 
 def seqs(frame, cols, max_windows=120, keep_sequences=False):
