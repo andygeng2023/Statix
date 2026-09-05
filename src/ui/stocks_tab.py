@@ -43,11 +43,10 @@ def _display_frame(
     frame,
     selected_range,
 ):
-
-    if frame is None or frame.empty:
+    if selected_range == "Auto":
         return frame
 
-    if selected_range == "Auto":
+    if frame is None or frame.empty:
         return frame
 
     cutoff = (
@@ -68,22 +67,18 @@ def _chart_layout(
     fig,
     height,
 ):
-
     fig.update_layout(
-
         height=height,
 
         margin=dict(
             l=8,
             r=8,
-            t=12,
+            t=8,
             b=8,
         ),
 
         showlegend=False,
-
         hovermode="x unified",
-
         dragmode="pan",
 
         yaxis=dict(
@@ -92,22 +87,25 @@ def _chart_layout(
         ),
 
         xaxis=dict(
-            fixedrange=False
+            fixedrange=False,
         ),
 
         paper_bgcolor="rgba(0,0,0,0)",
-
         plot_bgcolor="rgba(0,0,0,0)",
+
+        font=dict(
+            size=12,
+        ),
     )
 
     return fig
 
 
 def _chart_config():
-
     return {
         "displayModeBar": True,
         "scrollZoom": True,
+        "responsive": True,
         "modeBarButtonsToRemove": [
             "select2d",
             "lasso2d",
@@ -131,25 +129,16 @@ st.markdown(
     f"# {t('stocks', lang)}"
 )
 
-st.caption(
-    "Search, save and analyze individual securities."
-)
 
-
-# ============================================================
+# =========================================================
 # SEARCH
-# ============================================================
-
-st.subheader(
-    "Search"
-)
+# =========================================================
 
 search = st.text_input(
     t("search", lang),
     placeholder=(
-        "Apple, NVDA, MSFT, 000001..."
+        "Apple, NVDA, 000001..."
     ),
-    label_visibility="collapsed",
 )
 
 
@@ -162,7 +151,10 @@ if search.strip():
     if not results:
 
         st.info(
-            t("no_results", lang)
+            t(
+                "no_results",
+                lang,
+            )
         )
 
     else:
@@ -171,15 +163,17 @@ if search.strip():
 
         for result in results[:16]:
 
-            symbol = str(
-                result["symbol"]
-            ).upper()
+            symbol = result[
+                "symbol"
+            ].upper()
 
             items.append(
                 {
                     "ticker": symbol,
                     "name": (
-                        result.get("name")
+                        result.get(
+                            "name"
+                        )
                         or security_name(
                             symbol
                         )
@@ -201,20 +195,18 @@ if search.strip():
         )
 
 
-# ============================================================
-# WATCHLIST
-# ============================================================
-
 st.divider()
+
+
+# =========================================================
+# WATCHLIST
+# =========================================================
 
 st.subheader(
     t("watchlist", lang)
 )
 
-watchlist = [
-    str(x).upper()
-    for x in get_watchlist()
-]
+watchlist = get_watchlist()
 
 
 if not watchlist:
@@ -259,9 +251,9 @@ else:
     )
 
 
-# ============================================================
+# =========================================================
 # SELECTED STOCK
-# ============================================================
+# =========================================================
 
 ticker = st.session_state.get(
     "selected_ticker"
@@ -269,8 +261,6 @@ ticker = st.session_state.get(
 
 
 if not ticker:
-
-    st.divider()
 
     st.info(
         t(
@@ -282,14 +272,7 @@ if not ticker:
     st.stop()
 
 
-ticker = str(
-    ticker
-).upper()
-
-
 record_view(ticker)
-
-st.divider()
 
 
 q = quote(ticker)
@@ -304,9 +287,12 @@ name = security_name(
 )
 
 
-# ============================================================
-# HEADER
-# ============================================================
+st.divider()
+
+
+# =========================================================
+# STOCK HEADER
+# =========================================================
 
 title_col, action_col = st.columns(
     [5, 2],
@@ -325,17 +311,15 @@ with title_col:
         and name.upper()
         != ticker.upper()
     ):
+        st.caption(name)
 
-        st.caption(
-            name
-        )
+
+watched = is_watched(
+    ticker
+)
 
 
 with action_col:
-
-    watched = is_watched(
-        ticker
-    )
 
     if watched:
 
@@ -351,25 +335,23 @@ with action_col:
 
             st.rerun()
 
-    else:
+    elif st.button(
+        t("watch", lang),
+        key="detail_watch",
+        type="primary",
+        use_container_width=True,
+    ):
 
-        if st.button(
-            t("watch", lang),
-            key="detail_watch",
-            type="primary",
-            use_container_width=True,
-        ):
+        add_to_watchlist(
+            ticker
+        )
 
-            add_to_watchlist(
-                ticker
-            )
-
-            st.rerun()
+        st.rerun()
 
 
-# ============================================================
-# QUOTE
-# ============================================================
+# =========================================================
+# MARKET SNAPSHOT
+# =========================================================
 
 if q:
 
@@ -378,7 +360,6 @@ if q:
     )
 
     with a:
-
         st.metric(
             t("price", lang),
             money(
@@ -392,7 +373,6 @@ if q:
         )
 
     with b:
-
         st.metric(
             "Open",
             money(
@@ -401,7 +381,6 @@ if q:
         )
 
     with c:
-
         st.metric(
             "High",
             money(
@@ -410,7 +389,6 @@ if q:
         )
 
     with d:
-
         st.metric(
             "Low",
             money(
@@ -419,9 +397,9 @@ if q:
         )
 
 
-# ============================================================
-# HISTORY
-# ============================================================
+# =========================================================
+# PRICE HISTORY
+# =========================================================
 
 if (
     df is not None
@@ -456,10 +434,10 @@ if (
     ):
 
         st.caption(
-            f"{displayed.index[0]:%Y-%m-%d}"
-            f" → "
-            f"{displayed.index[-1]:%Y-%m-%d}"
-            f" · "
+            f"{displayed.index[0]:%Y-%m-%d} "
+            f"to "
+            f"{displayed.index[-1]:%Y-%m-%d} "
+            f"· "
             f"{len(displayed)} sessions"
         )
 
@@ -470,7 +448,6 @@ if (
                 mode="lines",
                 line=dict(
                     width=2,
-                    color="#7187d2",
                 ),
                 hovertemplate=(
                     "%{x|%Y-%m-%d}"
@@ -502,9 +479,9 @@ else:
     )
 
 
-# ============================================================
+# =========================================================
 # MODEL
-# ============================================================
+# =========================================================
 
 st.subheader(
     t("model", lang)
@@ -522,7 +499,10 @@ if model is None:
         )
     )
 
-elif df is None or df.empty:
+elif (
+    df is None
+    or df.empty
+):
 
     st.info(
         t(
@@ -591,7 +571,6 @@ else:
             )
 
             with a:
-
                 st.metric(
                     "Signal",
                     prediction[
@@ -600,7 +579,6 @@ else:
                 )
 
             with b:
-
                 st.metric(
                     t(
                         "confidence",
@@ -614,7 +592,6 @@ else:
                 )
 
             with c:
-
                 st.metric(
                     t(
                         "reliability",
@@ -628,7 +605,6 @@ else:
                 )
 
             with d:
-
                 st.metric(
                     "Model-estimated return",
                     pct(
@@ -641,13 +617,11 @@ else:
                 )
 
             st.caption(
-                "Model estimates are uncertain and should not be interpreted as guaranteed outcomes."
+                t(
+                    "forecast_note",
+                    lang,
+                )
             )
-
-
-            # =================================================
-            # FORECAST
-            # =================================================
 
             last_close = float(
                 df["close"].iloc[-1]
@@ -668,7 +642,6 @@ else:
             )
 
             forecast_values = [
-
                 last_close
                 + (
                     last_close
@@ -676,7 +649,6 @@ else:
                     * step
                     / 5
                 )
-
                 for step in range(
                     1,
                     6,
@@ -691,24 +663,16 @@ else:
             )
 
             forecast_fig = go.Figure(
-
                 go.Scatter(
-
                     x=forecast_history.index,
-
                     y=forecast_history[
                         "close"
                     ],
-
                     mode="lines",
-
                     line=dict(
                         width=2,
-                        color="#7187d2",
                     ),
-
                     name="History",
-
                     hovertemplate=(
                         "%{x|%Y-%m-%d}"
                         "<br>$%{y:.2f}"
@@ -718,33 +682,24 @@ else:
             )
 
             forecast_fig.add_trace(
-
                 go.Scatter(
-
                     x=[
                         df.index[-1],
                         *forecast_dates,
                     ],
-
                     y=[
                         last_close,
                         *forecast_values,
                     ],
-
                     mode="lines+markers",
-
                     line=dict(
                         width=2,
                         dash="dash",
-                        color="#9caef0",
                     ),
-
                     marker=dict(
-                        size=5
+                        size=5,
                     ),
-
-                    name="Model estimate",
-
+                    name="Model forecast",
                     hovertemplate=(
                         "%{x|%Y-%m-%d}"
                         "<br>$%{y:.2f}"
@@ -770,7 +725,10 @@ else:
             )
 
             st.subheader(
-                "Model outlook"
+                t(
+                    "model_outlook",
+                    lang,
+                )
             )
 
             st.plotly_chart(

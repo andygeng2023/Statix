@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import streamlit as st
 
-from src.data.market import history, quote
-from src.data.search import security_name
 from src.models.scanner_service import scan
 from src.storage.database import get_settings
-from src.ui.components import card_row, score, t
+from src.ui.components import card_row, t
+from src.data.market import history, quote
+from src.data.search import security_name
 
 
 settings = get_settings()
@@ -22,45 +22,44 @@ st.markdown(
 )
 
 st.caption(
-    "Explore market groups and model-ranked signals."
+    t("scanner_caption", lang)
 )
 
 
-# ============================================================
-# SCANNER
-# ============================================================
+# =========================================================
+# SCANNER CONTROLS
+# =========================================================
 
-st.subheader(
-    "Market scanner"
+control_left, control_right = st.columns(
+    [4, 2],
+    vertical_alignment="bottom",
 )
 
-st.caption(
-    "Rank a universe of securities using the Statix model."
-)
+with control_left:
+    limit = st.select_slider(
+        t("universe_size", lang),
+        options=[
+            100,
+            250,
+            500,
+        ],
+        value=500,
+    )
 
-limit = st.select_slider(
-    t("universe_size", lang),
-    options=[
-        100,
-        250,
-        500,
-    ],
-    value=500,
-)
+with control_right:
+    run_scan = st.button(
+        t("queue", lang),
+        type="primary",
+        use_container_width=True,
+    )
 
 
-if st.button(
-    t("queue", lang),
-    type="primary",
-    use_container_width=False,
-):
+if run_scan:
 
     with st.spinner(
         "Scanning market data..."
     ):
-
         try:
-
             rows = scan(limit)
 
             st.session_state[
@@ -70,18 +69,20 @@ if st.button(
             st.rerun()
 
         except Exception as exc:
-
-            st.error(
-                str(exc)
-            )
+            st.error(str(exc))
 
 
-# ============================================================
-# AREA EXPLORER
-# ============================================================
+rows = st.session_state.get(
+    "latest_scan_rows",
+    [],
+)
+
+
+# =========================================================
+# AREA UNIVERSES
+# =========================================================
 
 area_symbols = {
-
     "Top stocks": [
         "NVDA",
         "MSFT",
@@ -151,32 +152,26 @@ area_symbols = {
 
 
 area_labels = {
-
     "Top stocks": t(
         "area_top_stocks",
         lang,
     ),
-
     "Technology": t(
         "area_technology",
         lang,
     ),
-
     "Healthcare": t(
         "area_healthcare",
         lang,
     ),
-
     "Financials": t(
         "area_financials",
         lang,
     ),
-
     "Consumer": t(
         "area_consumer",
         lang,
     ),
-
     "ETFs": t(
         "area_etfs",
         lang,
@@ -184,8 +179,12 @@ area_labels = {
 }
 
 
+# =========================================================
+# TOP BY AREA
+# =========================================================
+
 st.subheader(
-    "Explore by area"
+    t("top_by_area", lang)
 )
 
 selected_area = st.selectbox(
@@ -193,6 +192,7 @@ selected_area = st.selectbox(
     list(area_symbols),
     format_func=lambda value:
         area_labels[value],
+    label_visibility="collapsed",
 )
 
 
@@ -209,7 +209,9 @@ for ticker in area_symbols[
             "ticker": ticker,
             "name": security_name(ticker),
             "price": q.get("price"),
-            "change_pct": q.get("change_pct"),
+            "change_pct": q.get(
+                "change_pct"
+            ),
             "df": history(
                 ticker,
                 "3mo",
@@ -224,15 +226,9 @@ card_row(
 )
 
 
-# ============================================================
-# LATEST SCAN
-# ============================================================
-
-rows = st.session_state.get(
-    "latest_scan_rows",
-    [],
-)
-
+# =========================================================
+# SCANNER RESULTS
+# =========================================================
 
 if rows:
 
@@ -241,26 +237,27 @@ if rows:
     )
 
     st.caption(
-        "Highest-ranked results from the latest scan."
+        "Latest model scanner results"
     )
 
     items = []
 
     for row in rows[:16]:
 
-        ticker = str(
-            row.get("ticker", "")
-        ).upper()
-
-        if not ticker:
-            continue
+        ticker = row["ticker"]
 
         q = quote(ticker)
+        df = history(
+            ticker,
+            "6mo",
+        )
 
         items.append(
             {
                 "ticker": ticker,
-                "name": security_name(ticker),
+                "name": security_name(
+                    ticker
+                ),
                 "price": q.get(
                     "price",
                     row.get("price"),
@@ -269,11 +266,10 @@ if rows:
                     "change_pct",
                     row.get("change_pct"),
                 ),
-                "df": history(
-                    ticker,
-                    "6mo",
+                "df": df,
+                "signal": row.get(
+                    "signal"
                 ),
-                "signal": row.get("signal"),
                 "confidence": row.get(
                     "confidence"
                 ),
@@ -288,13 +284,13 @@ if rows:
 
     card_row(
         items,
-        key_prefix="discover_latest",
+        key_prefix="discover",
     )
 
 
-    # ========================================================
-    # BULLISH
-    # ========================================================
+    # =====================================================
+    # BULLISH SIGNALS
+    # =====================================================
 
     bullish = [
         row
@@ -305,24 +301,24 @@ if rows:
         == "bullish"
     ]
 
-
     if bullish:
 
         st.subheader(
-            t("bullish_signals", lang)
+            t(
+                "bullish_signals",
+                lang,
+            )
         )
 
         st.caption(
-            "Results currently classified as bullish by the model."
+            "Stocks currently receiving a bullish model signal"
         )
 
         bullish_items = []
 
         for row in bullish[:12]:
 
-            ticker = str(
-                row.get("ticker", "")
-            ).upper()
+            ticker = row["ticker"]
 
             q = quote(ticker)
 
@@ -338,7 +334,9 @@ if rows:
                     ),
                     "change_pct": q.get(
                         "change_pct",
-                        row.get("change_pct"),
+                        row.get(
+                            "change_pct"
+                        ),
                     ),
                     "df": history(
                         ticker,

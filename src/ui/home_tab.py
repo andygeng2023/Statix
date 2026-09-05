@@ -17,10 +17,17 @@ lang = st.session_state.get(
 
 
 st.markdown(f"# {t('home', lang)}")
+st.caption(t("overview", lang))
 
-st.caption(
-    "Market overview, saved symbols and model signals."
-)
+
+def card_data(
+    ticker,
+    period="6mo",
+):
+    q = quote(ticker)
+    df = history(ticker, period)
+
+    return q, df
 
 
 watchlist = [
@@ -36,29 +43,56 @@ latest_rows = st.session_state.get(
 )
 
 
-def card_data(ticker: str, period: str = "6mo"):
-    q = quote(ticker)
-    df = history(ticker, period)
+# =========================================================
+# SYMBOL GROUPS
+# =========================================================
 
-    return q, df
+pulse_symbols = [
+    "SPY",
+    "QQQ",
+    "DIA",
+    "IWM",
+]
+
+pulse_symbols = [
+    ticker
+    for ticker in pulse_symbols
+    if ticker not in watch_set
+]
+
+
+featured_symbols = [
+    "NVDA",
+    "MSFT",
+    "GOOGL",
+    "AMZN",
+    "META",
+    "AVGO",
+    "TSLA",
+    "AAPL",
+]
+
+
+already_used = (
+    set(pulse_symbols)
+    | watch_set
+)
+
+
+featured_symbols = [
+    ticker
+    for ticker in featured_symbols
+    if ticker not in already_used
+]
 
 
 def make_items(
-    symbols: list[str],
-    period: str,
-    exclude: set[str] | None = None,
+    symbols,
+    period,
 ):
-    exclude = exclude or set()
-
     items = []
 
     for ticker in symbols:
-
-        ticker = str(ticker).upper()
-
-        if ticker in exclude:
-            continue
-
         q, df = card_data(
             ticker,
             period,
@@ -77,30 +111,16 @@ def make_items(
     return items
 
 
-# ============================================================
+# =========================================================
 # MARKET PULSE
-# ============================================================
-
-pulse_symbols = [
-    "SPY",
-    "QQQ",
-    "DIA",
-    "IWM",
-]
-
-pulse_symbols = [
-    x
-    for x in pulse_symbols
-    if x not in watch_set
-]
-
+# =========================================================
 
 st.subheader(
     t("market_pulse", lang)
 )
 
 st.caption(
-    "Major market benchmarks."
+    "Major market benchmarks"
 )
 
 card_row(
@@ -112,48 +132,46 @@ card_row(
 )
 
 
-# ============================================================
+# =========================================================
 # WATCHLIST
-# ============================================================
+# =========================================================
 
 if watchlist:
 
     st.subheader(
-        t("watchlist", lang)
+        t("watch_suggestions", lang)
     )
 
     st.caption(
-        "Your saved symbols."
+        "Your saved stocks"
     )
 
     card_row(
         make_items(
-            watchlist[:12],
+            watchlist[:8],
             "6mo",
         ),
         key_prefix="home_watchlist",
     )
 
 
-# ============================================================
+# =========================================================
 # DISCOVER
-# ============================================================
+# =========================================================
 
 st.subheader(
     t("discover", lang)
 )
 
 st.caption(
-    "Recent model-ranked market signals."
+    "Recent scanner signals"
 )
 
 discover_items = []
 
-used = (
-    set(pulse_symbols)
-    | watch_set
-)
-
+used_discover = set(
+    pulse_symbols
+) | watch_set
 
 for row in latest_rows[:16]:
 
@@ -161,7 +179,10 @@ for row in latest_rows[:16]:
         row.get("ticker", "")
     ).upper()
 
-    if not ticker or ticker in used:
+    if not ticker:
+        continue
+
+    if ticker in used_discover:
         continue
 
     q = quote(ticker)
@@ -183,66 +204,64 @@ for row in latest_rows[:16]:
                 "6mo",
             ),
             "signal": row.get("signal"),
-            "confidence": row.get("confidence"),
-            "reliability": row.get("reliability"),
+            "confidence": row.get(
+                "confidence"
+            ),
+            "reliability": row.get(
+                "reliability"
+            ),
             "expected_return": row.get(
                 "expected_return"
             ),
         }
     )
 
-    used.add(ticker)
-
+    used_discover.add(ticker)
 
 if discover_items:
-
     card_row(
         discover_items,
         key_prefix="home_discover",
     )
-
 else:
-
     st.info(
-        "No completed scan yet."
+        t("no_scan", lang)
     )
 
 
-# ============================================================
+# =========================================================
 # POPULAR STOCKS
-# ============================================================
-
-featured_symbols = [
-    "NVDA",
-    "MSFT",
-    "GOOGL",
-    "AMZN",
-    "META",
-    "AVGO",
-    "TSLA",
-    "AAPL",
-    "AMD",
-    "NFLX",
-    "ORCL",
-    "CRM",
-]
-
+# =========================================================
 
 st.subheader(
     t("top_stocks", lang)
 )
 
 st.caption(
-    "Widely followed stocks."
+    "Widely followed stocks"
 )
 
 featured_items = make_items(
     featured_symbols,
     "6mo",
-    exclude=used,
 )
 
-card_row(
-    featured_items,
-    key_prefix="home_featured",
-)
+# Avoid accidental duplication with
+# scanner results displayed above.
+discover_tickers = {
+    item["ticker"]
+    for item in discover_items
+}
+
+featured_items = [
+    item
+    for item in featured_items
+    if item["ticker"]
+    not in discover_tickers
+]
+
+if featured_items:
+    card_row(
+        featured_items,
+        key_prefix="home_featured",
+    )
