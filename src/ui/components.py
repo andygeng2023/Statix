@@ -748,6 +748,7 @@ def inject_theme_css():
             width:100%;
             max-width:100%;
             min-width:0;
+            color:#000000;
 
             justify-content:
                 space-between;
