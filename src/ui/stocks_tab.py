@@ -39,7 +39,6 @@ RANGE_PERIODS = {
     "5Y": 1825,
     "10Y": 3650,
     "20Y": 7300,
-    "10Y": 3650,
 }
 
 
@@ -113,9 +112,15 @@ def _chart_config():
         "modeBarButtonsToRemove": [
             "select2d",
             "lasso2d",
-            "autoScale2d",
         ],
     }
+
+
+def _price_axis_range(frame):
+    low = float(frame["low"].min())
+    high = float(frame["high"].max())
+    padding = max((high - low) * 0.06, abs(high) * 0.01, 0.01)
+    return [low - padding, high + padding]
 
 
 settings = get_settings()
@@ -185,7 +190,7 @@ if search.strip():
                     ),
                     "price": current_quote.get("price"),
                     "change_pct": current_quote.get("change_pct"),
-                    "df": None,
+                    "df": history(symbol, "3mo"),
                 }
             )
 
@@ -481,6 +486,7 @@ if (
             showlegend=True,
             legend=dict(orientation="h", yanchor="bottom", y=1.01, x=0),
             yaxis2=dict(overlaying="y", side="right", showgrid=False, title="Volume"),
+            yaxis=dict(range=_price_axis_range(chart_data)),
         )
 
         st.plotly_chart(
@@ -714,6 +720,11 @@ else:
                 )
             )
 
+            forecast_history = forecast_history.copy()
+            forecast_history["sma_20"] = forecast_history["close"].rolling(20, min_periods=1).mean()
+            forecast_history["sma_50"] = forecast_history["close"].rolling(50, min_periods=1).mean()
+            shared_price_range = _price_axis_range(displayed)
+
             forecast_fig = go.Figure(
                 go.Scatter(
                     x=forecast_history.index,
@@ -730,6 +741,26 @@ else:
                         "<br>$%{y:.2f}"
                         "<extra></extra>"
                     ),
+                )
+            )
+            forecast_fig.add_trace(
+                go.Scatter(
+                    x=forecast_history.index,
+                    y=forecast_history["sma_20"],
+                    mode="lines",
+                    line=dict(width=1, color="#4159a8"),
+                    name="History 20D average",
+                    hovertemplate="%{x|%Y-%m-%d}<br>$%{y:.2f}<extra></extra>",
+                )
+            )
+            forecast_fig.add_trace(
+                go.Scatter(
+                    x=forecast_history.index,
+                    y=forecast_history["sma_50"],
+                    mode="lines",
+                    line=dict(width=1, color="#b97916"),
+                    name="History 50D average",
+                    hovertemplate="%{x|%Y-%m-%d}<br>$%{y:.2f}<extra></extra>",
                 )
             )
 
@@ -798,6 +829,7 @@ else:
 
             forecast_fig.update_layout(
                 showlegend=True,
+                yaxis=dict(range=shared_price_range, fixedrange=False),
                 legend=dict(
                     orientation="h",
                     yanchor="bottom",
