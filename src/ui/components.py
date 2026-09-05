@@ -702,7 +702,7 @@ def inject_theme_css():
 
             box-sizing:border-box;
 
-            min-height:320px;
+            min-height:260px;
 
             padding:18px 19px;
 
