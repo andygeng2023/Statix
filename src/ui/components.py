@@ -767,10 +767,11 @@ def inject_theme_css():
         .statix-ticker {
 
             font-size:1.08rem;
+            font-weight:720;
+
+            color:#000000;
 
             line-height:1.2;
-
-            font-weight:720;
 
             letter-spacing:-.02em;
         }
@@ -779,7 +780,7 @@ def inject_theme_css():
 
             margin-top:4px;
 
-            color:#000000;
+            color:var(--statix-subtext);
 
             font-size:.84rem;
 
