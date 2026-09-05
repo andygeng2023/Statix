@@ -62,7 +62,7 @@ def seqs(frame, cols):
 
     X, y, r = [], [], []
     for i in range(SEQ - 1, len(frame)):
-        X.append(a[i - SEQ + 1:i + 1].mean(axis=0))
+        X.append(a[i - SEQ + 1:i + 1])
         y.append(yy[i])
         r.append(rr[i])
     return X, y, r
@@ -178,16 +178,12 @@ def main():
     print(f"Usable symbols:     {successful}")
     print()
 
-    clf, hgb, reg, mean, std = train_global(
+    clf, hgb, reg, mean, std, lstm_state, lstm_config = train_global(
         Xtr, ytr, rtr, feature_columns
     )
 
-    Xte = np.nan_to_num(
-    Xte,
-    nan=0.0,
-    posinf=0.0,
-    neginf=0.0,
-)
+    Xte = np.nan_to_num(Xte, nan=0.0, posinf=0.0, neginf=0.0)
+    Xte = Xte.mean(axis=1) if Xte.ndim == 3 else Xte
 
     Xte = np.clip(Xte, -20.0, 20.0)
 
@@ -223,7 +219,8 @@ def main():
     }
 
     save_model(
-        clf, hgb, reg, feature_columns, mean, std, metrics
+        clf, hgb, reg, feature_columns, mean, std, metrics,
+        lstm_state, lstm_config
     )
 
     print()

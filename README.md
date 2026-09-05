@@ -25,7 +25,8 @@ This version:
 - trains on 10 years of daily data
 - automatically expands the starter universe to the current S&P 500 when the local universe has fewer than 100 symbols
 - downloads training data in Yahoo Finance batches
-- uses class balancing and a larger ensemble
+- uses an XGBoost tabular branch plus an LSTM sequence branch when the optional
+	training dependencies are installed
 - refuses to load the old incompatible model artifact
 
 Reliability is a model-quality score derived from validation accuracy and current confidence. It is not a probability that a prediction will be profitable.
@@ -60,12 +61,30 @@ Default:
 - 10 years of daily Yahoo Finance history
 - 64-day sequence
 - 5-day prediction horizon
+- detailed predictions blend XGBoost and LSTM outputs
 
 Run:
 
 ```bash
 python -m training.train
 ```
+
+Install the model dependencies before retraining:
+
+```bash
+pip install -r requirements.txt
+```
+
+For roughly 2,000 stocks, set the training limit and expect a long download and
+training run:
+
+```bash
+STATIX_TRAIN_MAX_SYMBOLS=2000 STATIX_TRAIN_PERIOD=10y python -m training.train
+```
+
+The generated artifact contains the XGBoost and LSTM branches. The application
+still loads the existing legacy artifact, but detailed predictions use the
+hybrid only after this retraining completes successfully.
 
 To change the training size:
 
@@ -106,7 +125,21 @@ Do not edit the reliability number manually. Retrain the v3 model and inspect th
 
 The scanner uses PostgreSQL as a durable queue/result store and runs as a separate worker process.
 
+Each scan now applies a fast one-dimensional Kalman filter, propagates recent
+returns through a correlation graph, keeps the best 100 candidates, and sends
+those candidates through the stronger model. The UI displays the final 20
+suggestions. These are ranked signals, not financial advice.
+
 Streamlit Community Cloud is the web app host; it is not an always-on background worker. Run `scanner_worker.py` on a separate always-on host using the same database credentials and model artifact.
+
+After retraining, copy the updated `artifacts/statix_model.joblib` and
+`artifacts/model_meta.json` to the worker host, install the same requirements,
+and restart the worker service. Validate the result with:
+
+```bash
+python -m compileall -q app.py scanner_worker.py src training
+python -m training.train
+```
 
 ## Google sign-in
 

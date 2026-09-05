@@ -14,6 +14,37 @@ from src.storage.database import (
 )
 from src.ui.components import card_row, money, pct, score, t
 
+RANGE_PERIODS = {"1D": 1, "5D": 5, "10D": 10, "1M": 31, "1Y": 365, "5Y": 1825, "10Y": 3650}
+
+
+def _display_frame(frame, selected_range):
+    if selected_range == "Auto":
+        return frame
+    cutoff = frame.index[-1] - pd.Timedelta(days=RANGE_PERIODS[selected_range])
+    return frame.loc[frame.index >= cutoff]
+
+
+def _chart_layout(fig, height):
+    fig.update_layout(
+        height=height,
+        margin=dict(l=8, r=8, t=10, b=10),
+        showlegend=False,
+        hovermode="x unified",
+        dragmode="pan",
+        yaxis=dict(tickformat=".2f"),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+    )
+    return fig
+
+
+def _chart_config():
+    return {
+        "displayModeBar": True,
+        "scrollZoom": True,
+        "modeBarButtonsToRemove": ["select2d", "lasso2d", "autoScale2d"],
+    }
+
 settings = get_settings()
 lang = st.session_state.get("language_preference", settings.get("language", "en"))
 
@@ -72,7 +103,7 @@ if not ticker:
 record_view(ticker)
 st.divider()
 q = quote(ticker)
-df = history(ticker, "5y")
+df = history(ticker, "10y")
 name = security_name(ticker)
 
 title_col, action_col = st.columns([5, 2], vertical_alignment="center")
@@ -100,9 +131,15 @@ if q:
 
 if df is not None and not df.empty:
     st.subheader(t("price_history", lang))
-    fig = go.Figure(go.Scatter(x=df.index, y=df["close"], mode="lines", line=dict(width=2), hovertemplate="%{x|%Y-%m-%d}<br>$%{y:.2f}<extra></extra>"))
-    fig.update_layout(height=400, margin=dict(l=8,r=8,t=10,b=10), showlegend=False, hovermode="x unified", yaxis=dict(tickformat=".2f"), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False}, key=f"detail_chart_{ticker}")
+    range_choice = st.select_slider(
+        "Displayed range", options=["Auto", *RANGE_PERIODS], value="Auto",
+        key=f"history_range_{ticker}",
+    )
+    displayed = _display_frame(df, range_choice)
+    st.caption(f"{displayed.index[0]:%Y-%m-%d} to {displayed.index[-1]:%Y-%m-%d} ({len(displayed)} sessions)")
+    fig = go.Figure(go.Scatter(x=displayed.index, y=displayed["close"], mode="lines", line=dict(width=2), hovertemplate="%{x|%Y-%m-%d}<br>$%{y:.2f}<extra></extra>"))
+    _chart_layout(fig, 400)
+    st.plotly_chart(fig, use_container_width=True, config=_chart_config(), key=f"detail_chart_{ticker}")
 else:
     st.warning(t("historical_unavailable", lang))
 
@@ -113,7 +150,7 @@ if model is None:
 elif df is None or df.empty:
     st.info(t("prediction_data", lang))
 else:
-    market = history("SPY", "5y")
+    market = history("SPY", "10y")
     features, _ = create_features(df, market, target=False)
     missing = [x for x in model.feature_columns if x not in features.columns]
     if missing:
@@ -133,34 +170,34 @@ else:
 
             last_close = float(df["close"].iloc[-1])
             expected_return = float(prediction.get("expected_return", 0))
-            forecast_dates = pd.bdate_range(start=df.index[-1], periods=6)
+            forecast_dates = pd.bdate_range(start=df.index[-1], periods=6)[1:]
             forecast_values = [
                 last_close + (last_close * expected_return * step / 5)
-                for step in range(6)
+                for step in range(1, 6)
             ]
+            forecast_history = _display_frame(df, range_choice)
             forecast_fig = go.Figure(
                 go.Scatter(
-                    x=forecast_dates,
-                    y=forecast_values,
-                    mode="lines+markers",
-                    line=dict(width=2, dash="dash", color="#d97706"),
-                    marker=dict(size=5),
-                    hovertemplate="%{x|%Y-%m-%d}<br>$%{y:.2f}<extra></extra>",
+                    x=forecast_history.index, y=forecast_history["close"],
+                    mode="lines", line=dict(width=2, color="#4159a8"),
+                    name="History", hovertemplate="%{x|%Y-%m-%d}<br>$%{y:.2f}<extra></extra>",
                 )
             )
-            forecast_fig.update_layout(
-                height=260,
-                margin=dict(l=8, r=8, t=10, b=10),
-                showlegend=False,
-                yaxis=dict(tickformat=".2f"),
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
-            )
+            forecast_fig.add_trace(go.Scatter(
+                    x=[df.index[-1], *forecast_dates],
+                    y=[last_close, *forecast_values],
+                    mode="lines+markers",
+                    line=dict(width=2, dash="dash", color="#d97706"),
+                    marker=dict(size=5), name="Forecast",
+                    hovertemplate="%{x|%Y-%m-%d}<br>$%{y:.2f}<extra></extra>",
+                ))
+            _chart_layout(forecast_fig, 360)
+            forecast_fig.update_layout(showlegend=True)
             st.subheader(t("model_outlook", lang))
             st.plotly_chart(
                 forecast_fig,
                 use_container_width=True,
-                config={"displayModeBar": False},
+                config=_chart_config(),
                 key=f"forecast_chart_{ticker}",
             )
         except Exception as exc:

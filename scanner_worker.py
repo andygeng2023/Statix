@@ -3,12 +3,13 @@ from __future__ import annotations
 import time
 import pandas as pd
 
-from src.config import MAX_SCAN, ROOT, SEQUENCE_LENGTH
+from src.config import MAX_SCAN, ROOT, SCANNER_PREFILTER_LIMIT, SCANNER_RESULT_LIMIT, SEQUENCE_LENGTH
 from src.storage.database import claim_job, finish_job, job_limit
 from src.data.market import get_history
 from src.data.providers import selected_provider
 from src.models.features import create_features
 from src.models.model import load_model
+from src.models.scanner import prefilter
 
 
 def universe(limit):
@@ -39,7 +40,7 @@ def run(job_id):
             "Run python -m training.train and commit the artifact."
         )
 
-    rows = []
+    candidates = []
     for ticker in universe(job_limit(job_id)):
         try:
             d = get_history(ticker, "2y", 600)
@@ -50,29 +51,25 @@ def run(job_id):
             if len(f) < SEQUENCE_LENGTH:
                 continue
 
-            p = model.predict(
-                f[model.feature_columns].tail(SEQUENCE_LENGTH).to_numpy()
-            )
-
-            close = float(d["close"].iloc[-1])
-            previous = float(d["close"].iloc[-2]) if len(d) > 1 else None
-            change = (
-                (close - previous) / previous * 100
-                if previous not in (None, 0) else None
-            )
-
-            rows.append({
-                "ticker": ticker,
-                "signal": p["direction"],
-                "confidence": p["confidence"],
-                "reliability": p["reliability"],
-                "expected_return": p["expected_return"],
-                "price": close,
-                "change_pct": change,
-                "provider": selected_provider(),
-            })
+            candidates.append({"ticker": ticker, "history": d, "features": f})
         except Exception:
             continue
+
+    rows = []
+    for candidate in prefilter(candidates, SCANNER_PREFILTER_LIMIT):
+        f = candidate["features"]
+        p = model.predict(f[model.feature_columns].tail(SEQUENCE_LENGTH).to_numpy())
+        d = candidate["history"]
+        close = float(d["close"].iloc[-1])
+        previous = float(d["close"].iloc[-2]) if len(d) > 1 else None
+        change = ((close - previous) / previous * 100) if previous not in (None, 0) else None
+        rows.append({
+            "ticker": candidate["ticker"], "signal": p["direction"],
+            "confidence": p["confidence"], "reliability": p["reliability"],
+            "expected_return": p["expected_return"], "price": close,
+            "change_pct": change, "provider": selected_provider(),
+            "prefilter_score": candidate["prefilter_score"],
+        })
 
     rows.sort(
         key=lambda x: (
@@ -82,7 +79,7 @@ def run(job_id):
         ),
         reverse=True,
     )
-    return rows[:25]
+    return rows[:SCANNER_RESULT_LIMIT]
 
 
 def main():

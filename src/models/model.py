@@ -14,7 +14,7 @@ from src.config import MODEL_PATH, MODEL_META_PATH
 
 CLASS_NAMES_5 = ["Strong bearish", "Bearish", "Neutral", "Bullish", "Strong bullish"]
 CLASS_NAMES_3 = ["Bearish", "Neutral", "Bullish"]
-MODEL_VERSION = "statix-global-hgb-v2-compatible"
+MODEL_VERSION = "statix-xgboost-lstm-v3"
 SEQ = 64
 
 
@@ -71,7 +71,8 @@ def _combined_probabilities(logit, hgb, x):
 
 
 class Ensemble:
-    def __init__(self, logit, hgb, reg, features, mean, std, metrics):
+    def __init__(self, logit, hgb, reg, features, mean, std, metrics,
+                 lstm_state=None, lstm_config=None):
         self.logit = logit
         self.hgb = hgb
         self.reg = reg
@@ -79,10 +80,47 @@ class Ensemble:
         self.mean = np.asarray(mean, dtype=float)
         self.std = np.asarray(std, dtype=float)
         self.metrics = metrics or {}
+        self.lstm = None
+        if lstm_state and lstm_config:
+            try:
+                import torch
+                from torch import nn
+
+                class SequenceHead(nn.Module):
+                    def __init__(self, input_size, hidden_size, classes):
+                        super().__init__()
+                        self.lstm = nn.LSTM(input_size, hidden_size, batch_first=True)
+                        self.classifier = nn.Linear(hidden_size, classes)
+                        self.regressor = nn.Linear(hidden_size, 1)
+
+                    def forward(self, values):
+                        output, _ = self.lstm(values)
+                        state = output[:, -1, :]
+                        return self.classifier(state), self.regressor(state).squeeze(-1)
+
+                self.lstm = SequenceHead(**lstm_config)
+                self.lstm.load_state_dict(lstm_state)
+                self.lstm.eval()
+            except Exception:
+                self.lstm = None
 
     def predict(self, X):
         x = _prepare_prediction(X, self.mean, self.std)
         p, classes = _combined_probabilities(self.logit, self.hgb, x)
+        sequence_return = None
+        if self.lstm is not None:
+            import torch
+            sequence = np.asarray(X, dtype=float)
+            if sequence.ndim == 2:
+                sequence = sequence[-SEQ:]
+            sequence = np.where(np.isfinite(sequence), sequence, self.mean)
+            sequence = (sequence - self.mean) / (self.std + 1e-8)
+            with torch.no_grad():
+                logits, sequence_return = self.lstm(
+                    torch.from_numpy(sequence.astype(np.float32)).unsqueeze(0)
+                )
+                sequence_probabilities = torch.softmax(logits, dim=1).numpy()
+            p = 0.55 * p + 0.45 * sequence_probabilities
 
         row = p[0]
         idx = int(np.argmax(row))
@@ -91,6 +129,8 @@ class Ensemble:
         direction = names[idx]
 
         ret = float(self.reg.predict(x)[0])
+        if sequence_return is not None:
+            ret = 0.55 * ret + 0.45 * float(sequence_return.item())
         acc = float(self.metrics.get("validation_accuracy", 0.0))
         rel = float(np.clip(0.55 * conf + 0.45 * acc, 0.0, 1.0))
 
@@ -117,6 +157,11 @@ def _clean_training_matrix(X):
 
 
 def train_global(X, y, r, features):
+    raw_sequences = np.asarray(X, dtype=float)
+    if raw_sequences.ndim == 3:
+        X = raw_sequences.mean(axis=1)
+    else:
+        X = raw_sequences
     X = _clean_training_matrix(X)
     r = np.nan_to_num(np.asarray(r, dtype=float), nan=0.0, posinf=0.0, neginf=0.0)
 
@@ -128,30 +173,80 @@ def train_global(X, y, r, features):
     xn = (X - mean) / (std + 1e-8)
     xn = np.nan_to_num(xn, nan=0.0, posinf=0.0, neginf=0.0)
 
-    clf = make_pipeline(StandardScaler(), LogisticRegression(max_iter=800))
-    clf.fit(xn, y)
+    try:
+        from xgboost import XGBClassifier, XGBRegressor
+        clf = XGBClassifier(
+            n_estimators=260, max_depth=5, learning_rate=0.04,
+            subsample=0.85, colsample_bytree=0.85, objective="multi:softprob",
+            eval_metric="mlogloss", random_state=42,
+        )
+        clf.fit(xn, y)
+        hgb = clf
+        reg = XGBRegressor(
+            n_estimators=260, max_depth=5, learning_rate=0.04,
+            subsample=0.85, colsample_bytree=0.85, objective="reg:squarederror",
+            random_state=42,
+        )
+        reg.fit(xn, r)
+    except ImportError:
+        clf = make_pipeline(StandardScaler(), LogisticRegression(max_iter=800))
+        clf.fit(xn, y)
+        hgb = HistGradientBoostingClassifier(
+            max_iter=180, learning_rate=0.055, max_leaf_nodes=31,
+            l2_regularization=0.3, random_state=42,
+        )
+        hgb.fit(xn, y)
+        reg = HistGradientBoostingRegressor(
+            max_iter=180, learning_rate=0.055, max_leaf_nodes=31,
+            l2_regularization=0.3, random_state=42,
+        )
+        reg.fit(xn, r)
 
-    hgb = HistGradientBoostingClassifier(
-        max_iter=180,
-        learning_rate=0.055,
-        max_leaf_nodes=31,
-        l2_regularization=0.3,
-        random_state=42,
-    )
-    hgb.fit(xn, y)
+    lstm_state = None
+    lstm_config = None
+    if raw_sequences.ndim == 3:
+        try:
+            import torch
+            from torch import nn
 
-    reg = HistGradientBoostingRegressor(
-        max_iter=180,
-        learning_rate=0.055,
-        max_leaf_nodes=31,
-        l2_regularization=0.3,
-        random_state=42,
-    )
-    reg.fit(xn, r)
-    return clf, hgb, reg, mean, std
+            torch.manual_seed(42)
+            class SequenceHead(nn.Module):
+                def __init__(self, input_size, hidden_size, classes):
+                    super().__init__()
+                    self.lstm = nn.LSTM(input_size, hidden_size, batch_first=True)
+                    self.classifier = nn.Linear(hidden_size, classes)
+                    self.regressor = nn.Linear(hidden_size, 1)
+
+                def forward(self, values):
+                    output, _ = self.lstm(values)
+                    state = output[:, -1, :]
+                    return self.classifier(state), self.regressor(state).squeeze(-1)
+
+            classes = int(np.max(y)) + 1
+            network = SequenceHead(raw_sequences.shape[2], 32, classes)
+            optimizer = torch.optim.Adam(network.parameters(), lr=0.002)
+            class_loss = nn.CrossEntropyLoss()
+            values = np.where(np.isfinite(raw_sequences), raw_sequences, 0.0)
+            values = (values - mean) / (std + 1e-8)
+            inputs = torch.from_numpy(values.astype(np.float32))
+            labels = torch.from_numpy(np.asarray(y, dtype=np.int64))
+            returns = torch.from_numpy(np.asarray(r, dtype=np.float32))
+            network.train()
+            for _ in range(18):
+                logits, estimate = network(inputs)
+                loss = class_loss(logits, labels) + 0.35 * nn.functional.mse_loss(estimate, returns)
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+            lstm_state = network.state_dict()
+            lstm_config = {"input_size": raw_sequences.shape[2], "hidden_size": 32, "classes": classes}
+        except ImportError:
+            pass
+    return clf, hgb, reg, mean, std, lstm_state, lstm_config
 
 
-def save_model(logit, hgb, reg, features, mean, std, metrics):
+def save_model(logit, hgb, reg, features, mean, std, metrics,
+               lstm_state=None, lstm_config=None):
     MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
     joblib.dump(
         {
@@ -162,6 +257,8 @@ def save_model(logit, hgb, reg, features, mean, std, metrics):
             "mean": mean,
             "std": std,
             "metrics": metrics,
+            "lstm_state": lstm_state,
+            "lstm_config": lstm_config,
             "version": MODEL_VERSION,
         },
         MODEL_PATH,
@@ -180,6 +277,8 @@ def load_model():
         return None
     try:
         p = joblib.load(MODEL_PATH)
+        if p.get("version") != MODEL_VERSION:
+            return None
         return Ensemble(
             p["logit"],
             p["hgb"],
@@ -188,6 +287,8 @@ def load_model():
             np.asarray(p["mean"], dtype=float),
             np.asarray(p["std"], dtype=float),
             p.get("metrics", {}),
+            p.get("lstm_state"),
+            p.get("lstm_config"),
         )
     except Exception:
         return None
