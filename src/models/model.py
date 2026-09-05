@@ -240,8 +240,10 @@ def train_global(X, y, r, features):
                 optimizer.step()
             lstm_state = network.state_dict()
             lstm_config = {"input_size": raw_sequences.shape[2], "hidden_size": 32, "classes": classes}
-        except ImportError:
-            pass
+        except (ImportError, OSError) as exc:
+            # A broken or unavailable optional torch wheel must not prevent
+            # the tabular model from being trained and deployed.
+            print(f"LSTM branch unavailable; continuing with XGBoost: {exc}")
     return clf, hgb, reg, mean, std, lstm_state, lstm_config
 
 

@@ -22,9 +22,10 @@ def _secret(name: str, default=None):
 def selected_provider() -> str:
     try:
         import streamlit as st
-        value = st.session_state.get("provider_preference")
-        if value:
-            return str(value).lower()
+        if st.runtime.exists():
+            value = st.session_state.get("provider_preference")
+            if value:
+                return str(value).lower()
     except Exception:
         pass
 
