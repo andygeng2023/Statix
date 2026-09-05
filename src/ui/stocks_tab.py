@@ -5,199 +5,784 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from src.data.market import history, quote
-from src.data.search import search_stocks, security_name
+from src.data.search import (
+    search_stocks,
+    security_name,
+)
 from src.models.features import create_features
 from src.models.model import load_model
 from src.storage.database import (
-    add_to_watchlist, get_settings, get_watchlist, is_watched, record_view,
+    add_to_watchlist,
+    get_settings,
+    get_watchlist,
+    is_watched,
+    record_view,
     remove_from_watchlist,
 )
-from src.ui.components import card_row, money, pct, score, t
+from src.ui.components import (
+    card_row,
+    money,
+    pct,
+    score,
+    t,
+)
 
-RANGE_PERIODS = {"1D": 1, "5D": 5, "10D": 10, "1M": 31, "1Y": 365, "5Y": 1825, "10Y": 3650}
+
+RANGE_PERIODS = {
+    "1D": 1,
+    "5D": 5,
+    "10D": 10,
+    "1M": 31,
+    "1Y": 365,
+    "5Y": 1825,
+    "10Y": 3650,
+}
 
 
-def _display_frame(frame, selected_range):
+def _display_frame(
+    frame,
+    selected_range,
+):
+
+    if frame is None or frame.empty:
+        return frame
+
     if selected_range == "Auto":
         return frame
-    cutoff = frame.index[-1] - pd.Timedelta(days=RANGE_PERIODS[selected_range])
-    return frame.loc[frame.index >= cutoff]
+
+    cutoff = (
+        frame.index[-1]
+        - pd.Timedelta(
+            days=RANGE_PERIODS[
+                selected_range
+            ]
+        )
+    )
+
+    return frame.loc[
+        frame.index >= cutoff
+    ]
 
 
-def _chart_layout(fig, height):
+def _chart_layout(
+    fig,
+    height,
+):
+
     fig.update_layout(
+
         height=height,
-        margin=dict(l=8, r=8, t=10, b=10),
+
+        margin=dict(
+            l=8,
+            r=8,
+            t=12,
+            b=8,
+        ),
+
         showlegend=False,
+
         hovermode="x unified",
+
         dragmode="pan",
-        yaxis=dict(tickformat=".2f"),
+
+        yaxis=dict(
+            tickformat=".2f",
+            fixedrange=False,
+        ),
+
+        xaxis=dict(
+            fixedrange=False
+        ),
+
         paper_bgcolor="rgba(0,0,0,0)",
+
         plot_bgcolor="rgba(0,0,0,0)",
     )
+
     return fig
 
 
 def _chart_config():
+
     return {
         "displayModeBar": True,
         "scrollZoom": True,
-        "modeBarButtonsToRemove": ["select2d", "lasso2d", "autoScale2d"],
+        "modeBarButtonsToRemove": [
+            "select2d",
+            "lasso2d",
+            "autoScale2d",
+        ],
     }
 
-settings = get_settings()
-lang = st.session_state.get("language_preference", settings.get("language", "en"))
 
-st.markdown(f"# {t('stocks', lang)}")
-search = st.text_input(t("search", lang), placeholder="Apple, NVDA, 000001...")
+settings = get_settings()
+
+lang = st.session_state.get(
+    "language_preference",
+    settings.get(
+        "language",
+        "en",
+    ),
+)
+
+
+st.markdown(
+    f"# {t('stocks', lang)}"
+)
+
+st.caption(
+    "Search, save and analyze individual securities."
+)
+
+
+# ============================================================
+# SEARCH
+# ============================================================
+
+st.subheader(
+    "Search"
+)
+
+search = st.text_input(
+    t("search", lang),
+    placeholder=(
+        "Apple, NVDA, MSFT, 000001..."
+    ),
+    label_visibility="collapsed",
+)
+
 
 if search.strip():
-    results = search_stocks(search)
-    if not results:
-        st.info(t("no_results", lang))
-    else:
-        items = []
-        for result in results[:16]:
-            symbol = result["symbol"].upper()
-            items.append({
-                "ticker": symbol,
-                "name": result.get("name") or security_name(symbol),
-                "price": None,
-                "change_pct": None,
-                "df": None,
-            })
-        st.caption(f"{len(items)} {t('relevant_results', lang)}")
-        card_row(
-        items,
-        key_prefix="stocks_search",
+
+    results = search_stocks(
+        search
     )
 
+    if not results:
+
+        st.info(
+            t("no_results", lang)
+        )
+
+    else:
+
+        items = []
+
+        for result in results[:16]:
+
+            symbol = str(
+                result["symbol"]
+            ).upper()
+
+            items.append(
+                {
+                    "ticker": symbol,
+                    "name": (
+                        result.get("name")
+                        or security_name(
+                            symbol
+                        )
+                    ),
+                    "price": None,
+                    "change_pct": None,
+                    "df": None,
+                }
+            )
+
+        st.caption(
+            f"{len(items)} "
+            f"{t('relevant_results', lang)}"
+        )
+
+        card_row(
+            items,
+            key_prefix="stocks_search",
+        )
+
+
+# ============================================================
+# WATCHLIST
+# ============================================================
+
 st.divider()
-st.subheader(t("watchlist", lang))
-watchlist = get_watchlist()
+
+st.subheader(
+    t("watchlist", lang)
+)
+
+watchlist = [
+    str(x).upper()
+    for x in get_watchlist()
+]
+
+
 if not watchlist:
-    st.info(t("search_watchlist", lang))
+
+    st.info(
+        t(
+            "search_watchlist",
+            lang,
+        )
+    )
+
 else:
+
     items = []
+
     for ticker in watchlist:
-        items.append({
-            "ticker": ticker,
-            "name": security_name(ticker),
-            "price": quote(ticker).get("price"),
-            "change_pct": quote(ticker).get("change_pct"),
-            "df": history(ticker, "1y"),
-        })
+
+        q = quote(ticker)
+
+        items.append(
+            {
+                "ticker": ticker,
+                "name": security_name(
+                    ticker
+                ),
+                "price": q.get(
+                    "price"
+                ),
+                "change_pct": q.get(
+                    "change_pct"
+                ),
+                "df": history(
+                    ticker,
+                    "1y",
+                ),
+            }
+        )
+
     card_row(
         items,
         key_prefix="stocks_watchlist",
     )
 
-# Whole-card links set this value through the query string, so the detail view
-# remains inside Statix rather than opening another browser tab.
-ticker = st.session_state.get("selected_ticker")
+
+# ============================================================
+# SELECTED STOCK
+# ============================================================
+
+ticker = st.session_state.get(
+    "selected_ticker"
+)
+
+
 if not ticker:
-    st.info(t("select_stock", lang))
+
+    st.divider()
+
+    st.info(
+        t(
+            "select_stock",
+            lang,
+        )
+    )
+
     st.stop()
 
+
+ticker = str(
+    ticker
+).upper()
+
+
 record_view(ticker)
+
 st.divider()
+
+
 q = quote(ticker)
-df = history(ticker, "10y")
-name = security_name(ticker)
 
-title_col, action_col = st.columns([5, 2], vertical_alignment="center")
+df = history(
+    ticker,
+    "10y",
+)
+
+name = security_name(
+    ticker
+)
+
+
+# ============================================================
+# HEADER
+# ============================================================
+
+title_col, action_col = st.columns(
+    [5, 2],
+    vertical_alignment="center",
+)
+
+
 with title_col:
-    st.markdown(f"# {ticker}")
-    if name and name.upper() != ticker.upper():
-        st.caption(name)
 
-watched = is_watched(ticker)
+    st.markdown(
+        f"# {ticker}"
+    )
+
+    if (
+        name
+        and name.upper()
+        != ticker.upper()
+    ):
+
+        st.caption(
+            name
+        )
+
+
 with action_col:
+
+    watched = is_watched(
+        ticker
+    )
+
     if watched:
-        if st.button(t("remove", lang), key="detail_remove", use_container_width=True):
-            remove_from_watchlist(ticker)
+
+        if st.button(
+            t("remove", lang),
+            key="detail_remove",
+            use_container_width=True,
+        ):
+
+            remove_from_watchlist(
+                ticker
+            )
+
             st.rerun()
-    elif st.button(t("watch", lang), key="detail_watch", type="primary", use_container_width=True):
-        add_to_watchlist(ticker)
-        st.rerun()
+
+    else:
+
+        if st.button(
+            t("watch", lang),
+            key="detail_watch",
+            type="primary",
+            use_container_width=True,
+        ):
+
+            add_to_watchlist(
+                ticker
+            )
+
+            st.rerun()
+
+
+# ============================================================
+# QUOTE
+# ============================================================
 
 if q:
-    a, b, c, d = st.columns(4)
-    with a: st.metric(t("price", lang), money(q.get("price")), pct(q.get("change_pct")))
-    with b: st.metric("Open", money(q.get("open")))
-    with c: st.metric("High", money(q.get("high")))
-    with d: st.metric("Low", money(q.get("low")))
 
-if df is not None and not df.empty:
-    st.subheader(t("price_history", lang))
+    a, b, c, d = st.columns(
+        4
+    )
+
+    with a:
+
+        st.metric(
+            t("price", lang),
+            money(
+                q.get("price")
+            ),
+            pct(
+                q.get(
+                    "change_pct"
+                )
+            ),
+        )
+
+    with b:
+
+        st.metric(
+            "Open",
+            money(
+                q.get("open")
+            ),
+        )
+
+    with c:
+
+        st.metric(
+            "High",
+            money(
+                q.get("high")
+            ),
+        )
+
+    with d:
+
+        st.metric(
+            "Low",
+            money(
+                q.get("low")
+            ),
+        )
+
+
+# ============================================================
+# HISTORY
+# ============================================================
+
+if (
+    df is not None
+    and not df.empty
+):
+
+    st.subheader(
+        t(
+            "price_history",
+            lang,
+        )
+    )
+
     range_choice = st.select_slider(
-        "Displayed range", options=["Auto", *RANGE_PERIODS], value="Auto",
+        "Displayed range",
+        options=[
+            "Auto",
+            *RANGE_PERIODS,
+        ],
+        value="Auto",
         key=f"history_range_{ticker}",
     )
-    displayed = _display_frame(df, range_choice)
-    st.caption(f"{displayed.index[0]:%Y-%m-%d} to {displayed.index[-1]:%Y-%m-%d} ({len(displayed)} sessions)")
-    fig = go.Figure(go.Scatter(x=displayed.index, y=displayed["close"], mode="lines", line=dict(width=2), hovertemplate="%{x|%Y-%m-%d}<br>$%{y:.2f}<extra></extra>"))
-    _chart_layout(fig, 400)
-    st.plotly_chart(fig, use_container_width=True, config=_chart_config(), key=f"detail_chart_{ticker}")
-else:
-    st.warning(t("historical_unavailable", lang))
 
-st.subheader(t("model", lang))
+    displayed = _display_frame(
+        df,
+        range_choice,
+    )
+
+    if (
+        displayed is not None
+        and not displayed.empty
+    ):
+
+        st.caption(
+            f"{displayed.index[0]:%Y-%m-%d}"
+            f" → "
+            f"{displayed.index[-1]:%Y-%m-%d}"
+            f" · "
+            f"{len(displayed)} sessions"
+        )
+
+        fig = go.Figure(
+            go.Scatter(
+                x=displayed.index,
+                y=displayed["close"],
+                mode="lines",
+                line=dict(
+                    width=2,
+                    color="#7187d2",
+                ),
+                hovertemplate=(
+                    "%{x|%Y-%m-%d}"
+                    "<br>$%{y:.2f}"
+                    "<extra></extra>"
+                ),
+            )
+        )
+
+        _chart_layout(
+            fig,
+            400,
+        )
+
+        st.plotly_chart(
+            fig,
+            use_container_width=True,
+            config=_chart_config(),
+            key=f"detail_chart_{ticker}",
+        )
+
+else:
+
+    st.warning(
+        t(
+            "historical_unavailable",
+            lang,
+        )
+    )
+
+
+# ============================================================
+# MODEL
+# ============================================================
+
+st.subheader(
+    t("model", lang)
+)
+
 model = load_model()
-if model is None:
-    st.info(t("no_model", lang))
-elif df is None or df.empty:
-    st.info(t("prediction_data", lang))
-else:
-    market = history("SPY", "10y")
-    features, _ = create_features(df, market, target=False)
-    missing = [x for x in model.feature_columns if x not in features.columns]
-    if missing:
-        st.error(t("model_mismatch", lang))
-    elif len(features) < 64:
-        st.info(t("not_enough_history", lang))
-    else:
-        try:
-            X = features[model.feature_columns].tail(64).to_numpy(dtype=float)
-            prediction = model.predict(X)
-            a, b, c, d = st.columns(4)
-            with a: st.metric("Signal", prediction["direction"])
-            with b: st.metric(t("confidence", lang), score(prediction.get("confidence")))
-            with c: st.metric(t("reliability", lang), score(prediction.get("reliability")))
-            with d: st.metric(t("expected", lang), pct(prediction.get("expected_return", 0) * 100))
-            st.caption(t("forecast_note", lang))
 
-            last_close = float(df["close"].iloc[-1])
-            expected_return = float(prediction.get("expected_return", 0))
-            forecast_dates = pd.bdate_range(start=df.index[-1], periods=6)[1:]
-            forecast_values = [
-                last_close + (last_close * expected_return * step / 5)
-                for step in range(1, 6)
-            ]
-            forecast_history = _display_frame(df, range_choice)
-            forecast_fig = go.Figure(
-                go.Scatter(
-                    x=forecast_history.index, y=forecast_history["close"],
-                    mode="lines", line=dict(width=2, color="#4159a8"),
-                    name="History", hovertemplate="%{x|%Y-%m-%d}<br>$%{y:.2f}<extra></extra>",
+
+if model is None:
+
+    st.info(
+        t(
+            "no_model",
+            lang,
+        )
+    )
+
+elif df is None or df.empty:
+
+    st.info(
+        t(
+            "prediction_data",
+            lang,
+        )
+    )
+
+else:
+
+    market = history(
+        "SPY",
+        "10y",
+    )
+
+    features, _ = create_features(
+        df,
+        market,
+        target=False,
+    )
+
+    missing = [
+        x
+        for x in model.feature_columns
+        if x not in features.columns
+    ]
+
+    if missing:
+
+        st.error(
+            t(
+                "model_mismatch",
+                lang,
+            )
+        )
+
+    elif len(features) < 64:
+
+        st.info(
+            t(
+                "not_enough_history",
+                lang,
+            )
+        )
+
+    else:
+
+        try:
+
+            X = (
+                features[
+                    model.feature_columns
+                ]
+                .tail(64)
+                .to_numpy(
+                    dtype=float
                 )
             )
-            forecast_fig.add_trace(go.Scatter(
-                    x=[df.index[-1], *forecast_dates],
-                    y=[last_close, *forecast_values],
+
+            prediction = model.predict(
+                X
+            )
+
+            a, b, c, d = st.columns(
+                4
+            )
+
+            with a:
+
+                st.metric(
+                    "Signal",
+                    prediction[
+                        "direction"
+                    ],
+                )
+
+            with b:
+
+                st.metric(
+                    t(
+                        "confidence",
+                        lang,
+                    ),
+                    score(
+                        prediction.get(
+                            "confidence"
+                        )
+                    ),
+                )
+
+            with c:
+
+                st.metric(
+                    t(
+                        "reliability",
+                        lang,
+                    ),
+                    score(
+                        prediction.get(
+                            "reliability"
+                        )
+                    ),
+                )
+
+            with d:
+
+                st.metric(
+                    "Model-estimated return",
+                    pct(
+                        prediction.get(
+                            "expected_return",
+                            0,
+                        )
+                        * 100
+                    ),
+                )
+
+            st.caption(
+                "Model estimates are uncertain and should not be interpreted as guaranteed outcomes."
+            )
+
+
+            # =================================================
+            # FORECAST
+            # =================================================
+
+            last_close = float(
+                df["close"].iloc[-1]
+            )
+
+            expected_return = float(
+                prediction.get(
+                    "expected_return",
+                    0,
+                )
+            )
+
+            forecast_dates = (
+                pd.bdate_range(
+                    start=df.index[-1],
+                    periods=6,
+                )[1:]
+            )
+
+            forecast_values = [
+
+                last_close
+                + (
+                    last_close
+                    * expected_return
+                    * step
+                    / 5
+                )
+
+                for step in range(
+                    1,
+                    6,
+                )
+            ]
+
+            forecast_history = (
+                _display_frame(
+                    df,
+                    range_choice,
+                )
+            )
+
+            forecast_fig = go.Figure(
+
+                go.Scatter(
+
+                    x=forecast_history.index,
+
+                    y=forecast_history[
+                        "close"
+                    ],
+
+                    mode="lines",
+
+                    line=dict(
+                        width=2,
+                        color="#7187d2",
+                    ),
+
+                    name="History",
+
+                    hovertemplate=(
+                        "%{x|%Y-%m-%d}"
+                        "<br>$%{y:.2f}"
+                        "<extra></extra>"
+                    ),
+                )
+            )
+
+            forecast_fig.add_trace(
+
+                go.Scatter(
+
+                    x=[
+                        df.index[-1],
+                        *forecast_dates,
+                    ],
+
+                    y=[
+                        last_close,
+                        *forecast_values,
+                    ],
+
                     mode="lines+markers",
-                    line=dict(width=2, dash="dash", color="#d97706"),
-                    marker=dict(size=5), name="Forecast",
-                    hovertemplate="%{x|%Y-%m-%d}<br>$%{y:.2f}<extra></extra>",
-                ))
-            _chart_layout(forecast_fig, 360)
-            forecast_fig.update_layout(showlegend=True)
-            st.subheader(t("model_outlook", lang))
+
+                    line=dict(
+                        width=2,
+                        dash="dash",
+                        color="#9caef0",
+                    ),
+
+                    marker=dict(
+                        size=5
+                    ),
+
+                    name="Model estimate",
+
+                    hovertemplate=(
+                        "%{x|%Y-%m-%d}"
+                        "<br>$%{y:.2f}"
+                        "<extra></extra>"
+                    ),
+                )
+            )
+
+            _chart_layout(
+                forecast_fig,
+                360,
+            )
+
+            forecast_fig.update_layout(
+                showlegend=True,
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.01,
+                    xanchor="left",
+                    x=0,
+                ),
+            )
+
+            st.subheader(
+                "Model outlook"
+            )
+
             st.plotly_chart(
                 forecast_fig,
                 use_container_width=True,
                 config=_chart_config(),
                 key=f"forecast_chart_{ticker}",
             )
+
         except Exception as exc:
-            st.warning(f"{t('prediction_unavailable', lang)} for {ticker}: {exc}")
+
+            st.warning(
+                f"{t('prediction_unavailable', lang)} "
+                f"for {ticker}: {exc}"
+            )
