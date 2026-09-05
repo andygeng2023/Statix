@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pandas as pd
+import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
 
@@ -652,20 +653,30 @@ else:
             )
             horizon_values = prediction.get("horizons", {}).get(selected_horizon, {})
             expected_return = float(horizon_values.get("expected_return", prediction.get("expected_return", 0)))
+            forecast_error = float(horizon_values.get("error", 0))
             horizon_days = {"1D": 1, "5D": 5, "10D": 10, "1M": 21, "6M": 126, "1Y": 252, "5Y": 1260}.get(selected_horizon, 5)
 
             points = min(30, max(2, horizon_days))
             forecast_dates = pd.bdate_range(start=df.index[-1], periods=points + 1)[1:]
 
-            forecast_values = [
-                last_close
-                + (
-                    last_close
-                    * expected_return
-                    * step
-                    / points
-                )
+            # Ease toward the horizon estimate instead of drawing a perpetual
+            # straight-line rise from one short-horizon regression output.
+            denominator = 1.0 - np.exp(-1.0 / 0.35)
+            progress_values = [
+                (1.0 - np.exp(-(step / points) / 0.35)) / denominator
                 for step in range(1, points + 1)
+            ]
+            forecast_values = [
+                last_close * (1.0 + expected_return * progress)
+                for progress in progress_values
+            ]
+            lower_values = [
+                last_close * (1.0 + (expected_return - forecast_error) * progress)
+                for progress in progress_values
+            ]
+            upper_values = [
+                last_close * (1.0 + (expected_return + forecast_error) * progress)
+                for progress in progress_values
             ]
 
             forecast_history = (
@@ -718,6 +729,17 @@ else:
                         "<br>$%{y:.2f}"
                         "<extra></extra>"
                     ),
+                )
+            )
+            forecast_fig.add_trace(
+                go.Scatter(
+                    x=[*forecast_dates, *forecast_dates[::-1]],
+                    y=[*upper_values, *lower_values[::-1]],
+                    fill="toself",
+                    fillcolor="rgba(185,121,22,.14)",
+                    line=dict(color="rgba(0,0,0,0)"),
+                    hoverinfo="skip",
+                    name="Possible error range",
                 )
             )
 

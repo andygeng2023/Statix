@@ -499,8 +499,9 @@ def inject_theme_css():
             --statix-surface-hover:rgba(255,255,255,.60);
             --statix-border:rgba(20,43,82,.14);
             --statix-border-strong:rgba(20,43,82,.22);
-            --statix-text:#102040;
-            --statix-muted:#63728c;
+            --statix-text:#111827;
+            --statix-muted:#526985;
+            --statix-subtext:#526985;
             --statix-accent:#4159a8;
             --statix-hover:rgba(65,89,168,.065);
             --statix-forecast:#b97916;
@@ -515,8 +516,9 @@ def inject_theme_css():
                 --statix-surface-hover:rgba(20,42,72,.48);
                 --statix-border:rgba(157,180,222,.16);
                 --statix-border-strong:rgba(157,180,222,.24);
-                --statix-text:#e7eefc;
-                --statix-muted:#91a3c2;
+                --statix-text:#f3f6fb;
+                --statix-muted:#9aacc5;
+                --statix-subtext:#9aacc5;
                 --statix-accent:#8b9ee9;
                 --statix-hover:rgba(126,149,225,.08);
                 --statix-forecast:#d6a14b;
@@ -562,6 +564,7 @@ def inject_theme_css():
             border-color:var(--statix-border-strong);
             color:var(--statix-text);
             font-weight:600;
+            background:var(--statix-surface);
             transition:
                 background .15s ease,
                 border-color .15s ease,
@@ -577,6 +580,23 @@ def inject_theme_css():
             background:var(--statix-accent);
             border-color:var(--statix-accent);
             color:#fff;
+        }
+
+        div[data-testid="stSlider"] [role="slider"] {
+            background:var(--statix-accent);
+            border-color:var(--statix-accent);
+        }
+
+        div[data-testid="stSlider"] [data-baseweb="slider"] > div > div {
+            background:var(--statix-border-strong);
+        }
+
+        div[data-testid="stSelectbox"] [data-baseweb="select"] > div,
+        div[data-testid="stTextInput"] input,
+        div[data-testid="stNumberInput"] input {
+            background:var(--statix-surface);
+            color:var(--statix-text);
+            border-color:var(--statix-border-strong);
         }
 
         /* -----------------------------------------
@@ -759,8 +779,7 @@ def inject_theme_css():
 
             margin-top:4px;
 
-            color:
-                var(--statix-muted);
+            color:var(--statix-subtext);
 
             font-size:.84rem;
 
@@ -852,8 +871,7 @@ def inject_theme_css():
 
             flex:0 0 auto;
 
-            color:
-                var(--statix-muted);
+            color:var(--statix-subtext);
 
             white-space:nowrap;
 
@@ -951,8 +969,7 @@ def inject_theme_css():
 
         .statix-prediction-meta {
 
-            color:
-                var(--statix-muted);
+            color:var(--statix-subtext);
         }
 
         /* -----------------------------------------

@@ -1,37 +1,27 @@
 # Statix
 
-Statix is a Streamlit stock-research dashboard with four top-level areas: Home, Stocks, Discover, and Settings.
+Statix is a Streamlit stock-research dashboard for market context, historical price analysis, watchlists, calibrated model signals, and ranked scanner suggestions.
 
-## Provider architecture
+> Research software only. Predictions are estimates, not financial advice or guarantees.
 
-Automatic order:
+## Version
 
-1. QuantDash
-2. AKShare
-3. yfinance
+Current model format: `statix-walkforward-calibrated-v4`
 
-TuShare has been removed.
+The v4 pipeline uses:
 
-QuantDash uses its official Python SDK and API key. It does not require a manually configured base URL or endpoint paths.
+- Point-in-time technical, volatility, volume, market, sector, and beta features
+- Relative-return targets against market and sector context
+- 1-day, 5-day, and 20-day training targets, with the 5-day target as the primary signal
+- Chronological train, calibration, and test windows
+- XGBoost plus HistGradientBoosting classification/regression
+- Sigmoid probability calibration on a later validation period
+- Held-out accuracy, precision, recall, F1, ROC-AUC, Brier score, RMSE, return, and baseline metrics
+- A Kalman and correlation-graph scanner prefilter
 
-## Important model change
+The detail screen displays 1D, 5D, 10D, 1M, 6M, 1Y, and 5Y model-derived projections with uncertainty ranges. Longer horizons are projections of the trained 5-day signal, not independently trained forecasts.
 
-The previous model used five noisy daily-return classes and had an inference mismatch: training averaged each 64-day sequence, while inference sent all 64 rows to the classifier and read only the first result.
-
-This version:
-
-- uses three classes: Bearish / Neutral / Bullish
-- uses the same 64-day sequence aggregation during training and inference
-- trains on 10 years of daily data
-- automatically expands the starter universe to the current S&P 500 when the local universe has fewer than 100 symbols
-- downloads training data in Yahoo Finance batches
-- uses an XGBoost tabular branch plus an LSTM sequence branch when the optional
-	training dependencies are installed
-- refuses to load the old incompatible model artifact
-
-Reliability is a model-quality score derived from validation accuracy and current confidence. It is not a probability that a prediction will be profitable.
-
-## Local setup
+## Run Locally
 
 Python 3.14 is supported.
 
@@ -40,118 +30,103 @@ python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 pip install -r requirements.txt
-python -m compileall -q .
-```
-
-Copy `.streamlit/secrets.toml.example` to `.streamlit/secrets.toml` and fill in your API key/database settings.
-
-Run:
-
-```bash
+python -m compileall -q app.py src training
 streamlit run app.py
 ```
 
-## Train the model
+The app uses automatic provider fallback in this order:
 
-The training script automatically expands the tiny starter universe to the S&P 500 list.
+1. QuantDash, when configured
+2. AKShare
+3. yfinance
 
-Default:
+Configure secrets in `.streamlit/secrets.toml`. Never commit API keys, OAuth secrets, database passwords, or private credentials.
 
-- 500 symbols maximum
-- 10 years of daily Yahoo Finance history
-- 64-day sequence
-- 5-day prediction horizon
-- detailed predictions blend XGBoost and LSTM outputs
+## Train A Model
 
-Run:
-
-```bash
-python -m training.train
-```
-
-Install the model dependencies before retraining:
-
-```bash
-pip install -r requirements.txt
-```
-
-For roughly 2,000 stocks, set the training limit and expect a long download and
-training run:
-
-```bash
-STATIX_TRAIN_MAX_SYMBOLS=2000 STATIX_TRAIN_PERIOD=10y python -m training.train
-```
-
-The seed file at `training/universe.txt` is expanded at runtime from the SEC
-exchange directory to 2,000 unique NYSE/Nasdaq-listed symbols. This keeps the
-training universe current without committing a stale exchange snapshot.
-
-The generated artifact contains the XGBoost branch. An LSTM branch is optional
-and is added only when a compatible PyTorch build is installed separately. If
-PyTorch cannot load, training still completes with XGBoost and reports that the
-optional LSTM branch was skipped. The application loads only this v3 artifact.
-
-To change the training size:
-
-```bash
-STATIX_TRAIN_MAX_SYMBOLS=500 python -m training.train
-```
-
-To use another period supported by Yahoo Finance:
-
-```bash
-STATIX_TRAIN_PERIOD=10y python -m training.train
-```
-
-The output is:
+Training downloads daily OHLCV history, market context, sector ETF context, calculates point-in-time features, performs chronological validation, calibrates probabilities, evaluates the held-out period, and writes:
 
 ```text
 artifacts/statix_model.joblib
 artifacts/model_meta.json
 ```
 
-Commit both:
+Recommended 2,000-symbol run:
 
 ```bash
-git add artifacts/statix_model.joblib artifacts/model_meta.json
-git commit -m "Add Statix v3 model"
-git push
-```
-
-Streamlit Community Cloud will redeploy from GitHub.
-
-## Why the old 31.44% reliability does not carry over
-
-The old artifact was trained on only about 40 symbols and used five classes. A five-class classifier has a much harder validation problem than a three-class classifier. More importantly, its sequence representation was inconsistent between training and inference.
-
-Do not edit the reliability number manually. Retrain the v3 model and inspect the reported validation accuracy, validation RMSE, training windows, validation windows, and usable symbol count.
-
-## Discover scanner
-
-Each scan now applies a fast one-dimensional Kalman filter, propagates recent
-returns through a correlation graph, keeps the best 100 candidates, and sends
-those candidates through the stronger model. The UI displays the final 20
-suggestions. These are ranked signals, not financial advice.
-
-The scan now runs directly when the user clicks `Run scanner` in the Streamlit
-app. It does not require PostgreSQL, a queue, or a separate worker host. Results
-are kept in the current Streamlit session and are not a permanent shared cache.
-The app offers up to 500 symbols because a 2,000-symbol network scan is too
-long for a normal Streamlit request; use 2,000 symbols for offline training.
-
-Validate the app with:
-
-```bash
-python -m compileall -q app.py src training
+source .venv/bin/activate
+STATIX_TRAIN_MAX_SYMBOLS=2000 \
+STATIX_TRAIN_PERIOD=10y \
 python -m training.train
 ```
 
-## Google sign-in
+The default path stores compact feature-window means and does not require PyTorch. The optional LSTM branch is only attempted when explicitly enabled and a compatible PyTorch installation is available:
 
-Set `require_auth = true` and configure the `[auth]` section in Streamlit secrets with your OIDC provider. For Google, the redirect URI must match:
+```bash
+STATIX_ENABLE_LSTM=1 \
+STATIX_TRAIN_MAX_SYMBOLS=2000 \
+STATIX_TRAIN_PERIOD=10y \
+python -m training.train
+```
+
+Useful controls:
+
+```bash
+STATIX_MAX_WINDOWS_PER_SYMBOL=80 python -m training.train
+STATIX_TRAIN_MAX_SYMBOLS=500 python -m training.train
+STATIX_TRAIN_PERIOD=5y python -m training.train
+```
+
+`training/universe.txt` is a seed list. The runtime universe loader expands it with current SEC-listed NYSE/Nasdaq symbols up to the requested limit, capped at 2,000.
+
+After training:
+
+```bash
+git add artifacts/statix_model.joblib artifacts/model_meta.json
+git commit -m "Train Statix v4 model"
+git push
+```
+
+Streamlit Community Cloud loads the committed artifact from `artifacts/` after redeployment. If the artifact version does not match the application, predictions are disabled instead of silently using an incompatible model.
+
+## Scanner
+
+The Discover scanner runs in the Streamlit process and does not require a worker host or queue. It:
+
+1. Loads the selected universe with concurrent market-history requests
+2. Applies a fast Kalman momentum filter
+3. Propagates recent returns through a correlation graph
+4. Keeps roughly 100 candidates
+5. Scores them with the trained model and risk-aware ranking
+6. Displays the top 20 suggestions
+
+The scanner includes a live progress bar. Results are kept in the current Streamlit session. A 500-symbol scan is the practical interactive limit; use the 2,000-symbol setting for offline training.
+
+## App Areas
+
+- **Home**: market pulse, watchlist context, featured symbols, and recent scanner results
+- **Stocks**: search, watchlist, historical charts, pan/zoom interaction, and model projections
+- **Discover**: scanner controls, progress, ranked suggestions, and sector groupings
+- **Settings**: language and data-provider preferences
+
+Cards use same-tab links to the Stocks detail view. Charts support hover, pan, zoom, and selectable history ranges without box selection.
+
+## Validation
+
+```bash
+source .venv/bin/activate
+python -m compileall -q app.py src training
+git diff --check
+```
+
+## Authentication
+
+Set `require_auth = true` in Streamlit secrets and configure the Streamlit OIDC `[auth]` section. For Google sign-in, the redirect URI must match:
 
 ```text
 https://YOUR-APP-NAME.streamlit.app/oauth2callback
 ```
 
-Keep API keys, OAuth secrets, and database passwords out of Git.
+## License
+
+See [LICENSE](LICENSE).
