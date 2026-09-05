@@ -623,23 +623,39 @@ else:
                 )
             )
 
+            horizon_rows = []
+            for horizon, values in prediction.get("horizons", {}).items():
+                horizon_rows.append({
+                    "Horizon": horizon,
+                    "Expected return": pct(values["expected_return"] * 100),
+                    "Possible error": f"±{pct(values['error'] * 100, signed=False)}",
+                    "Lower range": pct(values["lower"] * 100),
+                    "Upper range": pct(values["upper"] * 100),
+                })
+            if horizon_rows:
+                st.caption("Model-derived horizon projections; error uses held-out test RMSE.")
+                st.dataframe(
+                    pd.DataFrame(horizon_rows),
+                    hide_index=True,
+                    use_container_width=True,
+                )
+
             last_close = float(
                 df["close"].iloc[-1]
             )
 
-            expected_return = float(
-                prediction.get(
-                    "expected_return",
-                    0,
-                )
+            selected_horizon = st.selectbox(
+                "Forecast horizon",
+                list(prediction.get("horizons", {"5D": {}})),
+                index=1 if "5D" in prediction.get("horizons", {}) else 0,
+                key=f"forecast_horizon_{ticker}",
             )
+            horizon_values = prediction.get("horizons", {}).get(selected_horizon, {})
+            expected_return = float(horizon_values.get("expected_return", prediction.get("expected_return", 0)))
+            horizon_days = {"1D": 1, "5D": 5, "10D": 10, "1M": 21, "6M": 126, "1Y": 252, "5Y": 1260}.get(selected_horizon, 5)
 
-            forecast_dates = (
-                pd.bdate_range(
-                    start=df.index[-1],
-                    periods=6,
-                )[1:]
-            )
+            points = min(30, max(2, horizon_days))
+            forecast_dates = pd.bdate_range(start=df.index[-1], periods=points + 1)[1:]
 
             forecast_values = [
                 last_close
@@ -647,12 +663,9 @@ else:
                     last_close
                     * expected_return
                     * step
-                    / 5
+                    / points
                 )
-                for step in range(
-                    1,
-                    6,
-                )
+                for step in range(1, points + 1)
             ]
 
             forecast_history = (

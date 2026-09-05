@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import numpy as np
 import pandas as pd
@@ -38,23 +39,31 @@ def scan(limit: int, progress_callback=None) -> list[dict]:
         ticker: get_history(ticker, "2y", 600)
         for ticker in ["SPY", "QQQ", "DIA", "IWM", "XLK", "XLV", "XLF", "XLY", "XLP", "XLE", "XLI"]
     }
-    candidates = []
     symbols = universe(limit)
-    total = len(symbols)
-    for index, ticker in enumerate(symbols, start=1):
-        if progress_callback:
-            progress_callback(index, total, f"Loading {ticker}")
+    candidates = []
+
+    def load_candidate(ticker):
         try:
             history = get_history(ticker, "2y", 600)
-            if len(history) < SEQUENCE_LENGTH:
-                continue
+            if len(history) < 30:
+                return None
             sector = market.get(SECTOR_BY_SYMBOL.get(ticker, "SPY"), market["SPY"])
             features, _ = create_features(history, market, sector, target=False)
-            if len(features) < SEQUENCE_LENGTH:
-                continue
-            candidates.append({"ticker": ticker, "history": history, "features": features})
+            if features.empty:
+                return None
+            return {"ticker": ticker, "history": history, "features": features}
         except Exception:
-            continue
+            return None
+
+    total = len(symbols)
+    with ThreadPoolExecutor(max_workers=12) as executor:
+        futures = {executor.submit(load_candidate, ticker): ticker for ticker in symbols}
+        for index, future in enumerate(as_completed(futures), start=1):
+            candidate = future.result()
+            if candidate is not None:
+                candidates.append(candidate)
+            if progress_callback:
+                progress_callback(index, total, f"Loading {futures[future]}")
 
     rows = []
     if progress_callback:

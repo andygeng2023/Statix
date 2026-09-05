@@ -17,6 +17,15 @@ CLASS_NAMES_5 = ["Strong bearish", "Bearish", "Neutral", "Bullish", "Strong bull
 CLASS_NAMES_3 = ["Bearish", "Neutral", "Bullish"]
 MODEL_VERSION = "statix-walkforward-calibrated-v4"
 SEQ = 64
+FORECAST_HORIZONS = {
+    "1D": 1,
+    "5D": 5,
+    "10D": 10,
+    "1M": 21,
+    "6M": 126,
+    "1Y": 252,
+    "5Y": 1260,
+}
 
 
 def _class_names(classes) -> list[str]:
@@ -135,6 +144,7 @@ class Ensemble:
         acc = float(self.metrics.get("validation_accuracy", 0.0))
         rel = float(np.clip(0.55 * conf + 0.45 * acc, 0.0, 1.0))
 
+        horizon_forecasts = self.horizon_forecasts(ret)
         return {
             "direction": direction,
             "class_probabilities": {
@@ -143,7 +153,32 @@ class Ensemble:
             "confidence": conf,
             "reliability": rel,
             "expected_return": ret,
+            "horizons": horizon_forecasts,
         }
+
+    def horizon_forecasts(self, five_day_return: float) -> dict[str, dict[str, float]]:
+        """Project the trained 5-day estimate with held-out error bands.
+
+        Longer horizons are projections of the trained 5-day model, not claims
+        that the model was independently trained on each horizon.
+        """
+        base_periods = 5.0
+        rmse = float(self.metrics.get("test_rmse", self.metrics.get("validation_rmse", 0.03)))
+        rmse = max(rmse, 1e-4)
+        daily_return = np.sign(five_day_return) * (
+            abs(1.0 + five_day_return) ** (1.0 / base_periods) - 1.0
+        )
+        forecasts = {}
+        for label, periods in FORECAST_HORIZONS.items():
+            expected = float((1.0 + daily_return) ** periods - 1.0)
+            error = float(1.96 * rmse * np.sqrt(periods / base_periods))
+            forecasts[label] = {
+                "expected_return": expected,
+                "lower": expected - error,
+                "upper": expected + error,
+                "error": error,
+            }
+        return forecasts
 
 
 def _clean_training_matrix(X):
