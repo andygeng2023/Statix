@@ -83,8 +83,8 @@ STATIX_TRAIN_MAX_SYMBOLS=2000 STATIX_TRAIN_PERIOD=10y python -m training.train
 ```
 
 The generated artifact contains the XGBoost and LSTM branches. The application
-still loads the existing legacy artifact, but detailed predictions use the
-hybrid only after this retraining completes successfully.
+loads only this v3 artifact, so detailed predictions remain unavailable until
+this retraining completes successfully and the generated files are committed.
 
 To change the training size:
 
@@ -121,23 +121,23 @@ The old artifact was trained on only about 40 symbols and used five classes. A f
 
 Do not edit the reliability number manually. Retrain the v3 model and inspect the reported validation accuracy, validation RMSE, training windows, validation windows, and usable symbol count.
 
-## Persistent Discover scanner
-
-The scanner uses PostgreSQL as a durable queue/result store and runs as a separate worker process.
+## Discover scanner
 
 Each scan now applies a fast one-dimensional Kalman filter, propagates recent
 returns through a correlation graph, keeps the best 100 candidates, and sends
 those candidates through the stronger model. The UI displays the final 20
 suggestions. These are ranked signals, not financial advice.
 
-Streamlit Community Cloud is the web app host; it is not an always-on background worker. Run `scanner_worker.py` on a separate always-on host using the same database credentials and model artifact.
+The scan now runs directly when the user clicks `Run scanner` in the Streamlit
+app. It does not require PostgreSQL, a queue, or a separate worker host. Results
+are kept in the current Streamlit session and are not a permanent shared cache.
+The app offers up to 500 symbols because a 2,000-symbol network scan is too
+long for a normal Streamlit request; use 2,000 symbols for offline training.
 
-After retraining, copy the updated `artifacts/statix_model.joblib` and
-`artifacts/model_meta.json` to the worker host, install the same requirements,
-and restart the worker service. Validate the result with:
+Validate the app with:
 
 ```bash
-python -m compileall -q app.py scanner_worker.py src training
+python -m compileall -q app.py src training
 python -m training.train
 ```
 

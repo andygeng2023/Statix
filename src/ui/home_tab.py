@@ -4,7 +4,7 @@ import streamlit as st
 
 from src.data.market import history, quote
 from src.data.search import security_name
-from src.storage.database import get_settings, get_watchlist, latest_scan
+from src.storage.database import get_settings, get_watchlist
 from src.ui.components import card_row, t
 
 
@@ -33,7 +33,7 @@ watchlist = [
 ]
 
 watch_set = set(watchlist)
-latest_job, latest_rows = latest_scan()
+latest_rows = st.session_state.get("latest_scan_rows", [])
 
 
 # ---------------------------------------

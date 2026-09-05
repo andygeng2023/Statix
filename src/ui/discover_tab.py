@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import streamlit as st
 
-from src.storage.database import enqueue_scan, job_status, latest_scan, get_settings
+from src.models.scanner_service import scan
+from src.storage.database import get_settings
 from src.ui.components import card_row, t
 from src.data.market import history, quote
 from src.data.search import security_name
@@ -13,22 +14,18 @@ lang = st.session_state.get("language_preference", settings.get("language", "en"
 st.markdown(f"# {t('discover', lang)}")
 st.caption(t("scanner_caption", lang))
 
-job, rows = latest_scan()
-status = job_status()
-limit = st.select_slider(t("universe_size", lang), options=[100, 250, 500, 1000, 1500, 2000], value=500)
+limit = st.select_slider(t("universe_size", lang), options=[100, 250, 500], value=500)
 
-if not job and (not status or status.status not in {"queued", "running"}):
-    enqueue_scan(limit)
+rows = st.session_state.get("latest_scan_rows", [])
 
 if st.button(t("queue", lang), type="primary"):
-    jid = enqueue_scan(limit)
-    if jid:
-        st.success(f"{t('scan_job', lang)} #{jid}")
-    else:
-        st.error(t("storage_unavailable", lang))
-
-if status:
-    st.caption(f"{t('job_status', lang)} #{status.id}: {status.status}")
+    with st.spinner("Scanning market data..."):
+        try:
+            rows = scan(limit)
+            st.session_state["latest_scan_rows"] = rows
+            st.rerun()
+        except Exception as exc:
+            st.error(str(exc))
 
 area_symbols = {
     "Top stocks": ["NVDA", "MSFT", "AAPL", "AMZN", "GOOGL", "META", "AVGO", "TSLA"],
