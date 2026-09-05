@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+from urllib.parse import quote
 
 import numpy as np
 import pandas as pd
@@ -319,6 +320,10 @@ def _card_html(
         "signal"
     )
 
+    card_url = (
+        f"?page=stocks&ticker={quote(ticker)}"
+    )
+
     prediction_html = ""
 
     if signal:
@@ -356,11 +361,13 @@ def _card_html(
         )
 
     return (
-        '<div '
+        '<a '
         'class="statix-card-link" '
+        f'href="{card_url}" '
+        'aria-label="Open stock details for '
+        f'{html.escape(ticker, quote=True)}" '
         f'data-ticker="{html.escape(ticker, quote=True)}" '
-        'role="button" '
-        'tabindex="0">'
+        '>'
         '<div class="statix-card">'
 
         '<div class="statix-card-head">'
@@ -398,7 +405,7 @@ def _card_html(
         f"{prediction_html}"
 
         "</div>"
-        "</div>"
+        "</a>"
     )
 
 
