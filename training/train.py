@@ -78,7 +78,7 @@ def load_symbols():
     return symbols[:max_symbols]
 
 
-def seqs(frame, cols, max_windows=120):
+def seqs(frame, cols, max_windows=120, keep_sequences=False):
     a = frame[cols].to_numpy(dtype=np.float32)
     yy = frame["target"].to_numpy(dtype=int)
     rr = frame["future_return"].to_numpy(dtype=np.float32)
@@ -88,6 +88,8 @@ def seqs(frame, cols, max_windows=120):
         selected = np.linspace(0, len(end_indices) - 1, max_windows, dtype=int)
         end_indices = end_indices[selected]
     X = np.stack([a[i - SEQ + 1:i + 1] for i in end_indices]).astype(np.float32)
+    if not keep_sequences:
+        X = X.mean(axis=1).astype(np.float32)
     return X, yy[end_indices], rr[end_indices]
 
 
@@ -140,6 +142,7 @@ def main():
     Xtest, ytest, rtest = [], [], []
     feature_columns = None
     successful = 0
+    keep_sequences = os.getenv("STATIX_ENABLE_LSTM", "0") == "1"
     market = {
         ticker: get_history(ticker, years, 3000)
         for ticker in ["SPY", "QQQ", "DIA", "IWM", "XLK", "XLV", "XLF", "XLY", "XLP", "XLE", "XLI"]
@@ -171,14 +174,20 @@ def main():
                 train_end = int(len(frame) * 0.70)
                 validation_end = int(len(frame) * 0.85)
                 windows = int(os.getenv("STATIX_MAX_WINDOWS_PER_SYMBOL", "120"))
-                train = seqs(frame.iloc[:train_end], cols, max_windows=windows)
+                train = seqs(
+                    frame.iloc[:train_end], cols,
+                    max_windows=windows,
+                    keep_sequences=keep_sequences,
+                )
                 validation = seqs(
                     frame.iloc[max(0, train_end - SEQ + 1):validation_end],
                     cols, max_windows=max(40, windows // 3),
+                    keep_sequences=keep_sequences,
                 )
                 test = seqs(
                     frame.iloc[max(0, validation_end - SEQ + 1):],
                     cols, max_windows=max(40, windows // 3),
+                    keep_sequences=keep_sequences,
                 )
                 if min(len(train[0]), len(validation[0]), len(test[0])) == 0:
                     continue

@@ -6,6 +6,10 @@ import pandas as pd
 FEATURE_VERSION = "statix-point-in-time-features-v4"
 
 
+def _pct_change(series: pd.Series, periods: int = 1) -> pd.Series:
+    return series.pct_change(periods=periods, fill_method=None)
+
+
 def _rsi(series: pd.Series, period: int = 14) -> pd.Series:
     delta = series.diff()
     gain = delta.clip(lower=0).ewm(alpha=1 / period, adjust=False, min_periods=period).mean()
@@ -14,7 +18,7 @@ def _rsi(series: pd.Series, period: int = 14) -> pd.Series:
 
 
 def _slope(series: pd.Series, period: int) -> pd.Series:
-    return series.pct_change(period) / period
+    return _pct_change(series, period) / period
 
 
 def _context_series(context, name: str, index: pd.Index) -> pd.Series:
@@ -32,7 +36,7 @@ def create_features(stock, market=None, sector=None, horizon=5, target=True):
     data = stock.copy().sort_index()
     close = data["close"].astype(float)
     volume = data["volume"].astype(float)
-    returns = close.pct_change()
+    returns = _pct_change(close)
     true_range = pd.concat(
         [data["high"] - data["low"],
          (data["high"] - close.shift()).abs(),
@@ -40,7 +44,7 @@ def create_features(stock, market=None, sector=None, horizon=5, target=True):
     ).max(axis=1)
 
     for period in [1, 5, 20, 60]:
-        data[f"ret_{period}"] = close.pct_change(period)
+        data[f"ret_{period}"] = _pct_change(close, period)
     for period in [10, 20, 50, 100, 200]:
         data[f"ma_distance_{period}"] = close / close.rolling(period).mean() - 1
         data[f"ema_distance_{period}"] = close / close.ewm(span=period, adjust=False).mean() - 1
@@ -69,25 +73,26 @@ def create_features(stock, market=None, sector=None, horizon=5, target=True):
 
     average_volume = volume.rolling(20).mean()
     data["volume_relative"] = volume / average_volume
-    data["volume_change"] = volume.pct_change()
+    data["volume_change"] = _pct_change(volume)
     data["volume_z"] = (volume - average_volume) / volume.rolling(20).std().replace(0, np.nan)
     data["obv"] = (np.sign(returns).fillna(0) * volume).cumsum()
-    data["obv_slope"] = data["obv"].pct_change(20)
+    data["obv_slope"] = _pct_change(data["obv"], 20)
 
     market_close = _context_series(market, "SPY", data.index)
     for name in ["SPY", "QQQ", "DIA", "IWM"]:
         context_close = _context_series(market, name, data.index)
-        data[f"{name.lower()}_ret_5"] = context_close.pct_change(5)
-        data[f"{name.lower()}_ret_20"] = context_close.pct_change(20)
+        data[f"{name.lower()}_ret_5"] = _pct_change(context_close, 5)
+        data[f"{name.lower()}_ret_20"] = _pct_change(context_close, 20)
     sector_close = _context_series(sector, "sector", data.index)
-    data["market_ret_5"] = market_close.pct_change(5)
-    data["market_ret_20"] = market_close.pct_change(20)
+    data["market_ret_5"] = _pct_change(market_close, 5)
+    data["market_ret_20"] = _pct_change(market_close, 20)
     data["relative_ret_5"] = data["ret_5"] - data["market_ret_5"]
     data["relative_ret_20"] = data["ret_20"] - data["market_ret_20"]
-    data["sector_ret_5"] = sector_close.pct_change(5)
+    data["sector_ret_5"] = _pct_change(sector_close, 5)
     data["relative_sector_ret_5"] = data["ret_5"] - data["sector_ret_5"]
-    covariance = returns.rolling(60).cov(market_close.pct_change())
-    data["beta_60"] = covariance / market_close.pct_change().rolling(60).var().replace(0, np.nan)
+    market_returns = _pct_change(market_close)
+    covariance = returns.rolling(60).cov(market_returns)
+    data["beta_60"] = covariance / market_returns.rolling(60).var().replace(0, np.nan)
 
     feature_columns = [
         column for column in data.columns
