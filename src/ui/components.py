@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -9,75 +10,131 @@ from src.config import TEXT
 
 
 def t(key, lang):
-    return TEXT.get(lang, TEXT["en"]).get(
+    return TEXT.get(
+        lang,
+        TEXT["en"],
+    ).get(
         key,
-        TEXT["en"].get(key, key),
+        TEXT["en"].get(
+            key,
+            key,
+        ),
     )
 
 
-def money(value, symbol="$", decimals=2):
+def money(
+    value,
+    symbol="$",
+    decimals=2,
+):
     if value is None:
         return "—"
 
     try:
-        value = float(value)
+        number_value = float(value)
 
-        if not np.isfinite(value):
+        if not np.isfinite(
+            number_value
+        ):
             return "—"
 
-        return f"{symbol}{value:,.{decimals}f}"
+        return (
+            f"{symbol}"
+            f"{number_value:,.{decimals}f}"
+        )
 
-    except (TypeError, ValueError):
+    except (
+        TypeError,
+        ValueError,
+    ):
         return "—"
 
 
-def number(value, decimals=2):
+def number(
+    value,
+    decimals=2,
+):
     if value is None:
         return "—"
 
     try:
-        value = float(value)
+        number_value = float(value)
 
-        if not np.isfinite(value):
+        if not np.isfinite(
+            number_value
+        ):
             return "—"
 
-        return f"{value:,.{decimals}f}"
+        return (
+            f"{number_value:,.{decimals}f}"
+        )
 
-    except (TypeError, ValueError):
+    except (
+        TypeError,
+        ValueError,
+    ):
         return "—"
 
 
-def pct(value, decimals=2, signed=True):
+def pct(
+    value,
+    decimals=2,
+    signed=True,
+):
     if value is None:
         return "—"
 
     try:
-        value = float(value)
+        number_value = float(value)
 
-        if not np.isfinite(value):
+        if not np.isfinite(
+            number_value
+        ):
             return "—"
 
-        prefix = "+" if signed and value > 0 else ""
+        prefix = (
+            "+"
+            if signed
+            and number_value > 0
+            else ""
+        )
 
-        return f"{prefix}{value:,.{decimals}f}%"
+        return (
+            f"{prefix}"
+            f"{number_value:,.{decimals}f}%"
+        )
 
-    except (TypeError, ValueError):
+    except (
+        TypeError,
+        ValueError,
+    ):
         return "—"
 
 
-def score(value, decimals=2):
+def score(
+    value,
+    decimals=2,
+):
     if value is None:
         return "—"
 
     try:
-        value = float(value)
+        number_value = float(value)
 
-        if not np.isfinite(value):
+        if not np.isfinite(
+            number_value
+        ):
             return "—"
 
-        return f"{value * 100:.{decimals}f}%"
+        return (
+            f"{number_value * 100:."
+            f"{decimals}f}%"
+        )
 
-    except (TypeError, ValueError):
+    except (
+        TypeError,
+        ValueError,
+    ):
         return "—"
 
 
@@ -87,6 +144,7 @@ def _sparkline_svg(
     width=640,
     height=120,
 ) -> str:
+
     if (
         df is None
         or df.empty
@@ -101,28 +159,44 @@ def _sparkline_svg(
         )
         .dropna()
         .tail(80)
-        .to_numpy(dtype=float)
+        .to_numpy(
+            dtype=float
+        )
     )
 
-    values = values[np.isfinite(values)]
+    values = values[
+        np.isfinite(values)
+    ]
 
     if len(values) < 2:
         return ""
 
-    lo = float(values.min())
-    hi = float(values.max())
-    span = hi - lo or 1.0
+    low = float(values.min())
+    high = float(values.max())
+
+    span = high - low
+
+    if span == 0:
+        span = 1.0
 
     points = []
 
-    for i, value in enumerate(values):
-        x = 4 + (width - 8) * i / (len(values) - 1)
+    for index, value in enumerate(
+        values
+    ):
+
+        x = (
+            4
+            + (width - 8)
+            * index
+            / (len(values) - 1)
+        )
 
         y = (
             height
             - 8
             - (height - 16)
-            * (value - lo)
+            * (value - low)
             / span
         )
 
@@ -132,16 +206,24 @@ def _sparkline_svg(
 
     forecast = ""
 
-    if expected_return is not None and len(values) >= 2:
+    if (
+        expected_return is not None
+        and len(values) >= 2
+    ):
+
         try:
-            expected_return = float(
+
+            expected = float(
                 expected_return
             )
 
-            if np.isfinite(expected_return):
+            if np.isfinite(
+                expected
+            ):
+
                 forecast_value = (
                     values[-1]
-                    * (1 + expected_return)
+                    * (1 + expected)
                 )
 
                 forecast_x = width - 4
@@ -150,7 +232,10 @@ def _sparkline_svg(
                     height
                     - 8
                     - (height - 16)
-                    * (forecast_value - lo)
+                    * (
+                        forecast_value
+                        - low
+                    )
                     / span
                 )
 
@@ -167,19 +252,26 @@ def _sparkline_svg(
                 )
 
                 forecast = (
-                    f'<line '
+                    '<line '
                     f'x1="{last_x}" '
                     f'y1="{last_y}" '
                     f'x2="{forecast_x:.1f}" '
                     f'y2="{forecast_y:.1f}" '
-                    f'stroke="var(--statix-forecast)" '
-                    f'stroke-width="2.2" '
-                    f'stroke-dasharray="6 6" '
-                    f'stroke-linecap="round" />'
+                    'stroke="var(--statix-forecast)" '
+                    'stroke-width="2.2" '
+                    'stroke-dasharray="6 6" '
+                    'stroke-linecap="round" />'
                 )
 
-        except (TypeError, ValueError):
+        except (
+            TypeError,
+            ValueError,
+        ):
             pass
+
+    points_string = " ".join(
+        points
+    )
 
     return (
         '<svg '
@@ -189,7 +281,7 @@ def _sparkline_svg(
         'preserveAspectRatio="none" '
         'aria-hidden="true">'
         '<polyline '
-        f'points="{" ".join(points)}" '
+        f'points="{points_string}" '
         'fill="none" '
         'stroke="currentColor" '
         'stroke-width="2.2" '
@@ -200,14 +292,22 @@ def _sparkline_svg(
     )
 
 
-def _card_html(item: dict) -> str:
+def _card_html(
+    item: dict,
+) -> str:
+
     ticker = str(
-        item["ticker"]
+        item.get(
+            "ticker",
+            "",
+        )
     ).upper()
 
     name = html.escape(
         str(
-            item.get("name")
+            item.get(
+                "name"
+            )
             or ticker
         ),
         quote=True,
@@ -215,60 +315,94 @@ def _card_html(item: dict) -> str:
 
     spark = _sparkline_svg(
         item.get("df"),
-        item.get("expected_return"),
+        item.get(
+            "expected_return"
+        ),
     )
 
-    signal = item.get("signal")
+    signal = item.get(
+        "signal"
+    )
 
-    details = ""
+    prediction_html = ""
 
     if signal:
-        details = (
+
+        prediction_html = (
             '<div class="statix-card-prediction">'
-            f'<span class="statix-signal">'
-            f'{html.escape(str(signal))}'
+            '<span class="statix-signal">'
+            f"{html.escape(str(signal))}"
             "</span>"
             '<span class="statix-prediction-meta">'
-            f'Confidence {score(item.get("confidence"))}'
-            f' · Reliability {score(item.get("reliability"))}'
+            f"Confidence "
+            f"{score(item.get('confidence'))}"
+            " · "
+            f"Reliability "
+            f"{score(item.get('reliability'))}"
             "</span>"
             "</div>"
         )
 
+    chart_html = ""
+
+    if spark:
+
+        chart_html = (
+            '<div class="statix-chart">'
+            f"{spark}"
+            "</div>"
+        )
+
+    else:
+
+        chart_html = (
+            '<div class="statix-chart '
+            'statix-chart-empty"></div>'
+        )
+
     return (
-        '<div class="statix-card-link" '
+        '<div '
+        'class="statix-card-link" '
         f'data-ticker="{html.escape(ticker, quote=True)}" '
-        'role="button" tabindex="0">'
+        'role="button" '
+        'tabindex="0">'
         '<div class="statix-card">'
+
         '<div class="statix-card-head">'
+
         '<div class="statix-card-identity">'
-        f'<div class="statix-ticker">'
-        f'{html.escape(ticker)}'
+
+        '<div class="statix-ticker">'
+        f"{html.escape(ticker)}"
         "</div>"
-        f'<div class="statix-name">{name}</div>'
+
+        '<div class="statix-name">'
+        f"{name}"
         "</div>"
+
+        "</div>"
+
         '<div class="statix-arrow">›</div>'
+
         "</div>"
 
         '<div class="statix-card-stats">'
-        f'<span class="statix-price">'
-        f'{money(item.get("price"))}'
+
+        '<span class="statix-price">'
+        f"{money(item.get('price'))}"
         "</span>"
-        f'<span class="statix-change">'
-        f'{pct(item.get("change_pct"))}'
+
+        '<span class="statix-change">'
+        f"{pct(item.get('change_pct'))}"
         "</span>"
+
         "</div>"
 
-        + (
-            f'<div class="statix-chart">{spark}</div>'
-            if spark
-            else
-            '<div class="statix-chart statix-chart-empty"></div>'
-        )
+        f"{chart_html}"
 
-        + details
+        f"{prediction_html}"
 
-        + "</div>"
+        "</div>"
         "</div>"
     )
 
@@ -277,12 +411,14 @@ def card_row(
     items: list[dict],
     key_prefix: str = "card",
 ):
+
     if not items:
         return
 
-    safe_key = str(key_prefix).replace(
-        "_",
-        "-",
+    safe_key = (
+        str(key_prefix)
+        .replace("_", "-")
+        .replace(" ", "-")
     )
 
     with st.container(
@@ -291,7 +427,9 @@ def card_row(
         gap="small",
         key=f"card-row-{safe_key}",
     ):
+
         for item in items:
+
             st.markdown(
                 _card_html(item),
                 unsafe_allow_html=True,
@@ -302,14 +440,11 @@ def bottom_navigation(
     page: str,
     labels: dict[str, str],
 ):
-    st.markdown(
-        '<div class="statix-bottom-spacer"></div>',
-        unsafe_allow_html=True,
-    )
 
     with st.container(
-        key="statix-bottom-nav",
+        key="statix-bottom-nav"
     ):
+
         cols = st.columns(
             len(labels),
             gap="small",
@@ -319,10 +454,14 @@ def bottom_navigation(
             cols,
             labels,
         ):
+
             with col:
+
                 if st.button(
                     labels[key],
-                    key=f"bottom_nav_{key}",
+                    key=(
+                        f"bottom_nav_{key}"
+                    ),
                     use_container_width=True,
                     type=(
                         "primary"
@@ -330,6 +469,7 @@ def bottom_navigation(
                         else "secondary"
                     ),
                 ):
+
                     st.session_state[
                         "page"
                     ] = key
@@ -340,76 +480,85 @@ def bottom_navigation(
                     )
 
                     st.query_params.clear()
+
                     st.rerun()
 
 
 def inject_theme_css():
+
     st.markdown(
         """
         <style>
 
         :root {
-            --statix-bg: #f3f7ff;
-            --statix-surface: rgba(255,255,255,.34);
-            --statix-surface-hover: rgba(255,255,255,.60);
-            --statix-border: rgba(20,43,82,.14);
-            --statix-border-strong: rgba(20,43,82,.22);
-            --statix-text: #102040;
-            --statix-muted: #63728c;
-            --statix-accent: #4159a8;
-            --statix-accent-soft: #7187d2;
-            --statix-forecast: #b97916;
-            --statix-hover: rgba(65,89,168,.065);
-            --statix-nav-bg: rgba(243,247,255,.90);
+            --statix-bg:#f3f7ff;
+            --statix-surface:rgba(255,255,255,.34);
+            --statix-surface-hover:rgba(255,255,255,.60);
+            --statix-border:rgba(20,43,82,.14);
+            --statix-border-strong:rgba(20,43,82,.22);
+            --statix-text:#102040;
+            --statix-muted:#63728c;
+            --statix-accent:#4159a8;
+            --statix-hover:rgba(65,89,168,.065);
+            --statix-forecast:#b97916;
+            --statix-nav-bg:rgba(243,247,255,.92);
         }
 
-        @media (prefers-color-scheme: dark) {
+        @media (prefers-color-scheme:dark) {
+
             :root {
-                --statix-bg: #081426;
-                --statix-surface: rgba(13,31,56,.26);
-                --statix-surface-hover: rgba(20,42,72,.44);
-                --statix-border: rgba(157,180,222,.14);
-                --statix-border-strong: rgba(157,180,222,.22);
-                --statix-text: #e7eefc;
-                --statix-muted: #91a3c2;
-                --statix-accent: #8b9ee9;
-                --statix-accent-soft: #a9b8ef;
-                --statix-forecast: #d6a14b;
-                --statix-hover: rgba(126,149,225,.08);
-                --statix-nav-bg: rgba(8,20,38,.91);
+                --statix-bg:#081426;
+                --statix-surface:rgba(13,31,56,.28);
+                --statix-surface-hover:rgba(20,42,72,.48);
+                --statix-border:rgba(157,180,222,.16);
+                --statix-border-strong:rgba(157,180,222,.24);
+                --statix-text:#e7eefc;
+                --statix-muted:#91a3c2;
+                --statix-accent:#8b9ee9;
+                --statix-hover:rgba(126,149,225,.08);
+                --statix-forecast:#d6a14b;
+                --statix-nav-bg:rgba(8,20,38,.93);
             }
         }
 
-        /* -------------------------------------------------
-           APP
-        ------------------------------------------------- */
+        /* -----------------------------------------
+           PAGE
+        ----------------------------------------- */
 
         .stApp {
-            background: var(--statix-bg);
-            color: var(--statix-text);
+            background:var(--statix-bg);
+            color:var(--statix-text);
+        }
+
+        .block-container {
+            max-width:1500px;
+
+            padding-top:2rem;
+
+            /*
+             * IMPORTANT:
+             * This reserves space at the ACTUAL bottom
+             * of every page, rather than inserting a spacer
+             * before the page content.
+             */
+            padding-bottom:125px !important;
         }
 
         [data-testid="stSidebar"],
         [data-testid="stSidebarCollapsedControl"] {
-            display: none;
+            display:none;
         }
 
-        .block-container {
-            max-width: 1500px;
-            padding-top: 2.2rem;
-            padding-bottom: 1.5rem;
-        }
-
-        /* -------------------------------------------------
-           GENERAL BUTTONS
-        ------------------------------------------------- */
+        /* -----------------------------------------
+           BUTTONS
+        ----------------------------------------- */
 
         div[data-testid="stButton"] > button {
-            min-height: 42px;
-            border-radius: 8px;
-            border-color: var(--statix-border-strong);
-            color: var(--statix-text);
-            font-weight: 600;
+            min-height:42px;
+            border-radius:8px;
+            border-color:var(--statix-border-strong);
+            color:var(--statix-text);
+            font-weight:600;
             transition:
                 background .15s ease,
                 border-color .15s ease,
@@ -417,49 +566,42 @@ def inject_theme_css():
         }
 
         div[data-testid="stButton"] > button:hover {
-            border-color: var(--statix-accent);
-            transform: translateY(-1px);
+            border-color:var(--statix-accent);
+            transform:translateY(-1px);
         }
 
         div[data-testid="stButton"] > button[kind="primary"] {
-            background: var(--statix-accent);
-            border-color: var(--statix-accent);
-            color: #fff;
+            background:var(--statix-accent);
+            border-color:var(--statix-accent);
+            color:#fff;
         }
 
-        /* -------------------------------------------------
-           PAGE HEADINGS
-        ------------------------------------------------- */
-
-        h1 {
-            letter-spacing: -.035em !important;
-            font-weight: 700 !important;
-        }
-
-        h2, h3 {
-            letter-spacing: -.025em !important;
-            font-weight: 620 !important;
-        }
-
-        [data-testid="stCaptionContainer"] {
-            color: var(--statix-muted);
-        }
-
-        /* -------------------------------------------------
-           STOCK CARD ROW
-        ------------------------------------------------- */
+        /* -----------------------------------------
+           HORIZONTAL CARD ROWS
+        ----------------------------------------- */
 
         [data-testid="stHorizontalBlock"]:has(.statix-card-link) {
-            width: 100%;
-            max-width: 100%;
-            min-width: 0;
-            flex-wrap: nowrap !important;
-            overflow-x: auto !important;
-            overflow-y: hidden !important;
-            align-items: stretch !important;
-            padding: 4px 4px 14px;
-            margin: 0;
-            scrollbar-width: thin;
+
+            width:100%;
+            max-width:100%;
+            min-width:0;
+
+            flex-wrap:nowrap !important;
+
+            overflow-x:auto !important;
+            overflow-y:hidden !important;
+
+            align-items:stretch !important;
+
+            padding:
+                5px
+                5px
+                16px;
+
+            margin-bottom:4px;
+
+            scrollbar-width:thin;
+
             scrollbar-color:
                 var(--statix-border-strong)
                 transparent;
@@ -467,57 +609,76 @@ def inject_theme_css():
 
         [data-testid="stHorizontalBlock"]:has(.statix-card-link)
         > div {
-            flex: 0 0 285px !important;
-            width: 285px !important;
-            min-width: 285px !important;
-            max-width: 285px !important;
-            min-height: 0 !important;
+
+            flex:0 0 285px !important;
+
+            width:285px !important;
+            min-width:285px !important;
+            max-width:285px !important;
+
+            min-height:0 !important;
+
+            box-sizing:border-box;
         }
 
         [data-testid="stHorizontalBlock"]:has(.statix-card-link)
         > div > div {
-            width: 100%;
-            min-width: 0;
-            max-width: 100%;
+
+            width:100%;
+            max-width:100%;
+            min-width:0;
         }
 
-        /* -------------------------------------------------
+        /* -----------------------------------------
            CARD
-        ------------------------------------------------- */
+        ----------------------------------------- */
 
         .statix-card-link {
-            display: block;
-            width: 100%;
-            max-width: 100%;
-            min-width: 0;
-            color: inherit;
-            text-decoration: none;
-            cursor: pointer;
-            outline: none;
-            box-sizing: border-box;
-        }
 
-        .statix-card-link:focus-visible
-        .statix-card {
-            border-color: var(--statix-accent);
-            box-shadow:
-                0 0 0 2px
-                rgba(65,89,168,.18);
+            display:block;
+
+            width:100%;
+            max-width:100%;
+            min-width:0;
+
+            color:inherit;
+            text-decoration:none;
+
+            cursor:pointer;
+
+            outline:none;
+
+            box-sizing:border-box;
         }
 
         .statix-card {
-            width: 100%;
-            max-width: 100%;
-            min-width: 0;
-            min-height: 220px;
-            box-sizing: border-box;
-            overflow: hidden;
 
-            padding: 18px 19px;
+            display:block;
 
-            background: var(--statix-surface);
-            border: 1px solid var(--statix-border);
-            border-radius: 10px;
+            width:100%;
+            max-width:100%;
+            min-width:0;
+
+            box-sizing:border-box;
+
+            min-height:220px;
+
+            padding:18px 19px;
+
+            background:var(--statix-surface);
+
+            border:
+                1px solid
+                var(--statix-border);
+
+            border-radius:10px;
+
+            /*
+             * Critical overflow protection.
+             */
+            overflow:hidden;
+
+            contain:layout paint;
 
             transition:
                 border-color .15s ease,
@@ -527,291 +688,449 @@ def inject_theme_css():
         }
 
         .statix-card:hover {
-            border-color: var(--statix-accent);
-            background: var(--statix-surface-hover);
-            transform: translateY(-2px);
+
+            border-color:
+                var(--statix-accent);
+
+            background:
+                var(--statix-surface-hover);
+
+            transform:
+                translateY(-2px);
+
             box-shadow:
                 0 8px 22px
                 rgba(16,32,64,.10);
         }
 
-        /* -------------------------------------------------
+        .statix-card-link:focus-visible
+        .statix-card {
+
+            border-color:
+                var(--statix-accent);
+
+            box-shadow:
+                0 0 0 2px
+                rgba(65,89,168,.18);
+        }
+
+        /* -----------------------------------------
            CARD HEADER
-        ------------------------------------------------- */
+        ----------------------------------------- */
 
         .statix-card-head {
-            display: flex;
-            width: 100%;
-            min-width: 0;
-            max-width: 100%;
-            justify-content: space-between;
-            align-items: flex-start;
-            gap: 12px;
+
+            display:flex;
+
+            width:100%;
+            max-width:100%;
+            min-width:0;
+
+            justify-content:
+                space-between;
+
+            align-items:flex-start;
+
+            gap:12px;
         }
 
         .statix-card-identity {
-            min-width: 0;
-            max-width: calc(100% - 28px);
+
+            min-width:0;
+            max-width:
+                calc(100% - 28px);
         }
 
         .statix-ticker {
-            font-size: 1.08rem;
-            line-height: 1.2;
-            font-weight: 720;
-            letter-spacing: -.02em;
+
+            font-size:1.08rem;
+
+            line-height:1.2;
+
+            font-weight:720;
+
+            letter-spacing:-.02em;
         }
 
         .statix-name {
-            margin-top: 4px;
-            color: var(--statix-muted);
-            font-size: .84rem;
-            line-height: 1.25;
 
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            margin-top:4px;
 
-            max-width: 100%;
+            color:
+                var(--statix-muted);
+
+            font-size:.84rem;
+
+            line-height:1.25;
+
+            white-space:nowrap;
+
+            overflow:hidden;
+
+            text-overflow:ellipsis;
+
+            max-width:100%;
         }
 
         .statix-arrow {
-            flex: 0 0 auto;
-            color: var(--statix-muted);
-            font-size: 1.45rem;
-            line-height: 1;
-            margin-top: -1px;
+
+            flex:0 0 auto;
+
+            color:
+                var(--statix-muted);
+
+            font-size:1.45rem;
+
+            line-height:1;
+
             transition:
                 color .15s ease,
                 transform .15s ease;
         }
 
-        .statix-card-link:hover .statix-arrow {
-            color: var(--statix-accent);
-            transform: translateX(2px);
+        .statix-card-link:hover
+        .statix-arrow {
+
+            color:
+                var(--statix-accent);
+
+            transform:
+                translateX(2px);
         }
 
-        /* -------------------------------------------------
+        /* -----------------------------------------
            PRICE
-        ------------------------------------------------- */
+        ----------------------------------------- */
 
         .statix-card-stats {
-            display: flex;
-            width: 100%;
-            min-width: 0;
-            max-width: 100%;
-            justify-content: space-between;
-            align-items: baseline;
-            gap: 10px;
 
-            margin-top: 17px;
+            display:flex;
 
-            font-size: .92rem;
-            font-variant-numeric: tabular-nums;
+            width:100%;
+            max-width:100%;
+            min-width:0;
+
+            justify-content:
+                space-between;
+
+            align-items:
+                baseline;
+
+            gap:10px;
+
+            margin-top:17px;
+
+            font-size:.92rem;
+
+            font-variant-numeric:
+                tabular-nums;
         }
 
         .statix-price {
-            min-width: 0;
-            font-size: 1.25rem;
-            line-height: 1.15;
-            font-weight: 680;
-            letter-spacing: -.02em;
-            white-space: nowrap;
+
+            min-width:0;
+
+            font-size:1.25rem;
+
+            line-height:1.15;
+
+            font-weight:680;
+
+            letter-spacing:-.02em;
+
+            white-space:nowrap;
+
+            overflow:hidden;
+
+            text-overflow:ellipsis;
         }
 
         .statix-change {
-            flex: 0 0 auto;
-            color: var(--statix-muted);
-            white-space: nowrap;
-            font-weight: 550;
+
+            flex:0 0 auto;
+
+            color:
+                var(--statix-muted);
+
+            white-space:nowrap;
+
+            font-weight:550;
         }
 
-        /* -------------------------------------------------
-           CARD GRAPH
-        ------------------------------------------------- */
+        /* -----------------------------------------
+           GRAPH
+        ----------------------------------------- */
 
         .statix-chart {
-            display: block;
-            width: 100%;
-            max-width: 100%;
-            min-width: 0;
-            height: 88px;
 
-            margin-top: 14px;
+            display:block;
 
-            overflow: hidden;
-            box-sizing: border-box;
+            position:relative;
 
-            color: var(--statix-accent);
-            opacity: .92;
+            width:100%;
+            max-width:100%;
+            min-width:0;
+
+            height:88px;
+
+            margin-top:14px;
+
+            box-sizing:border-box;
+
+            overflow:hidden;
+
+            color:
+                var(--statix-accent);
+
+            opacity:.92;
         }
 
         .statix-chart-empty {
-            height: 88px;
+
+            height:88px;
         }
 
         .statix-spark {
-            display: block;
 
-            width: 100% !important;
-            max-width: 100% !important;
-            min-width: 0 !important;
+            display:block;
 
-            height: 100% !important;
-            max-height: 100% !important;
+            position:absolute;
 
-            overflow: hidden;
+            left:0;
+            top:0;
 
-            box-sizing: border-box;
+            width:100% !important;
+            max-width:100% !important;
+            min-width:0 !important;
+
+            height:100% !important;
+            max-height:100% !important;
+
+            box-sizing:border-box;
+
+            overflow:hidden;
+
+            contain:paint;
         }
 
-        /* -------------------------------------------------
-           PREDICTION INFO
-        ------------------------------------------------- */
+        /* -----------------------------------------
+           PREDICTION
+        ----------------------------------------- */
 
         .statix-card-prediction {
-            display: flex;
-            width: 100%;
-            min-width: 0;
-            max-width: 100%;
 
-            flex-wrap: wrap;
-            gap: 4px 8px;
+            display:flex;
 
-            margin-top: 12px;
+            width:100%;
+            max-width:100%;
+            min-width:0;
 
-            font-size: .78rem;
-            line-height: 1.35;
+            flex-wrap:wrap;
+
+            gap:4px 8px;
+
+            margin-top:12px;
+
+            font-size:.78rem;
+
+            line-height:1.35;
+
+            overflow:hidden;
         }
 
         .statix-signal {
-            color: var(--statix-text);
-            font-weight: 650;
+
+            color:
+                var(--statix-text);
+
+            font-weight:650;
         }
 
         .statix-prediction-meta {
-            color: var(--statix-muted);
+
+            color:
+                var(--statix-muted);
         }
 
-        /* -------------------------------------------------
-           DIVIDERS / METRICS
-        ------------------------------------------------- */
-
-        hr {
-            border-color: var(--statix-border) !important;
-        }
-
-        [data-testid="stMetricValue"] {
-            font-variant-numeric: tabular-nums;
-            letter-spacing: -.02em;
-        }
-
-        /* -------------------------------------------------
-           BOTTOM NAVIGATION
-        ------------------------------------------------- */
-
-        .statix-bottom-spacer {
-            height: 78px;
-        }
+        /* -----------------------------------------
+           BOTTOM NAV
+        ----------------------------------------- */
 
         .st-key-statix-bottom-nav {
-            position: fixed;
-            z-index: 1000;
 
-            left: 0;
-            right: 0;
-            bottom: 0;
+            position:fixed;
 
-            display: flex;
+            z-index:1000;
+
+            left:0;
+            right:0;
+            bottom:0;
+
+            width:100%;
+
+            box-sizing:border-box;
 
             padding:
                 9px
-                max(14px, calc((100vw - 1500px) / 2));
+                max(
+                    14px,
+                    calc(
+                        (100vw - 1500px) / 2
+                    )
+                );
 
-            background: var(--statix-nav-bg);
+            background:
+                var(--statix-nav-bg);
 
             border-top:
                 1px solid
                 var(--statix-border);
 
-            backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
+            backdrop-filter:
+                blur(16px);
+
+            -webkit-backdrop-filter:
+                blur(16px);
         }
 
         .st-key-statix-bottom-nav
         [data-testid="stHorizontalBlock"] {
-            width: 100%;
+
+            width:100%;
         }
 
         .st-key-statix-bottom-nav
         div[data-testid="stButton"] > button {
-            min-height: 44px;
 
-            border: 1px solid transparent;
-            border-radius: 7px;
+            min-height:44px;
 
-            background: transparent;
-            box-shadow: none;
+            border:
+                1px solid
+                transparent;
 
-            color: var(--statix-muted);
+            border-radius:7px;
 
-            font-size: .88rem;
-            font-weight: 600;
+            background:transparent;
+
+            box-shadow:none;
+
+            color:
+                var(--statix-muted);
+
+            font-size:.88rem;
+
+            font-weight:600;
         }
 
         .st-key-statix-bottom-nav
         div[data-testid="stButton"] > button:hover {
-            background: var(--statix-hover);
-            color: var(--statix-text);
-            border-color: transparent;
-            transform: none;
+
+            background:
+                var(--statix-hover);
+
+            color:
+                var(--statix-text);
+
+            border-color:
+                transparent;
+
+            transform:none;
+
+            box-shadow:none;
         }
 
         .st-key-statix-bottom-nav
         div[data-testid="stButton"] > button[kind="primary"] {
-            background: var(--statix-hover);
-            border-color: var(--statix-border);
-            color: var(--statix-accent);
-            box-shadow: none;
+
+            background:
+                var(--statix-hover);
+
+            border-color:
+                var(--statix-border);
+
+            color:
+                var(--statix-accent);
+
+            box-shadow:none;
         }
 
-        /* -------------------------------------------------
-           MOBILE
-        ------------------------------------------------- */
+        /* -----------------------------------------
+           GENERAL
+        ----------------------------------------- */
 
-        @media (max-width: 700px) {
+        [data-testid="stMetricValue"] {
+
+            font-variant-numeric:
+                tabular-nums;
+
+            letter-spacing:-.02em;
+        }
+
+        hr {
+            border-color:
+                var(--statix-border) !important;
+        }
+
+        /* -----------------------------------------
+           MOBILE
+        ----------------------------------------- */
+
+        @media (max-width:700px) {
 
             .block-container {
-                padding-top: 1.35rem;
-                padding-left: 1rem;
-                padding-right: 1rem;
+
+                padding-top:1.35rem;
+
+                padding-left:1rem;
+                padding-right:1rem;
+
+                /*
+                 * Slightly more room on mobile because
+                 * the navigation remains visible.
+                 */
+                padding-bottom:135px !important;
             }
 
             [data-testid="stHorizontalBlock"]:has(.statix-card-link)
             > div {
-                flex-basis: 265px !important;
-                width: 265px !important;
-                min-width: 265px !important;
-                max-width: 265px !important;
+
+                flex-basis:265px !important;
+
+                width:265px !important;
+                min-width:265px !important;
+                max-width:265px !important;
             }
 
             .statix-card {
-                min-height: 205px;
-                padding: 16px 17px;
+
+                min-height:205px;
+
+                padding:
+                    16px
+                    17px;
             }
 
             .statix-chart {
-                height: 78px;
+
+                height:78px;
             }
 
-            .statix-card-prediction {
-                font-size: .75rem;
+            .st-key-statix-bottom-nav {
+
+                padding:
+                    8px
+                    8px;
             }
 
             .st-key-statix-bottom-nav
             div[data-testid="stButton"] > button {
-                font-size: .78rem;
-                padding-left: 4px;
-                padding-right: 4px;
+
+                min-height:44px;
+
+                padding-left:4px;
+                padding-right:4px;
+
+                font-size:.78rem;
             }
         }
 

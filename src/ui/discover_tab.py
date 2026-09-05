@@ -4,16 +4,30 @@ import streamlit as st
 
 from src.models.scanner_service import scan
 from src.storage.database import get_settings
-from src.ui.components import card_row, t
-from src.data.market import history, quote
-from src.data.search import security_name
+from src.ui.components import (
+    card_row,
+    money,
+    pct,
+    score,
+    t,
+)
+from src.data.market import (
+    history,
+    quote,
+)
+from src.data.search import (
+    security_name,
+)
 
 
 settings = get_settings()
 
 lang = st.session_state.get(
     "language_preference",
-    settings.get("language", "en"),
+    settings.get(
+        "language",
+        "en",
+    ),
 )
 
 
@@ -22,67 +36,179 @@ st.markdown(
 )
 
 st.caption(
-    t("scanner_caption", lang)
+    t(
+        "scanner_caption",
+        lang,
+    )
 )
 
 
 # =========================================================
-# SCANNER CONTROLS
+# SCANNER CONTROL
 # =========================================================
 
-control_left, control_right = st.columns(
-    [4, 2],
-    vertical_alignment="bottom",
+limit = st.select_slider(
+    t(
+        "universe_size",
+        lang,
+    ),
+    options=[
+        100,
+        250,
+        500,
+    ],
+    value=500,
 )
 
-with control_left:
-    limit = st.select_slider(
-        t("universe_size", lang),
-        options=[
-            100,
-            250,
-            500,
-        ],
-        value=500,
-    )
 
-with control_right:
-    run_scan = st.button(
-        t("queue", lang),
-        type="primary",
-        use_container_width=True,
-    )
-
-
-if run_scan:
+if st.button(
+    t("queue", lang),
+    type="primary",
+    use_container_width=False,
+):
 
     with st.spinner(
         "Scanning market data..."
     ):
-        try:
-            rows = scan(limit)
 
+        try:
+
+            scan_results = scan(
+                int(limit)
+            )
+
+            # Explicitly copy the returned list into
+            # session state before rerunning.
             st.session_state[
                 "latest_scan_rows"
-            ] = rows
+            ] = list(
+                scan_results or []
+            )
+
+            st.session_state[
+                "scan_completed"
+            ] = True
+
+            st.session_state[
+                "scan_result_count"
+            ] = len(
+                st.session_state[
+                    "latest_scan_rows"
+                ]
+            )
 
             st.rerun()
 
         except Exception as exc:
-            st.error(str(exc))
 
+            st.session_state[
+                "scan_completed"
+            ] = False
+
+            st.error(
+                f"Scanner error: {exc}"
+            )
+
+
+# =========================================================
+# READ PERSISTED RESULTS
+# =========================================================
 
 rows = st.session_state.get(
     "latest_scan_rows",
     [],
 )
 
+scan_completed = st.session_state.get(
+    "scan_completed",
+    False,
+)
+
 
 # =========================================================
-# AREA UNIVERSES
+# SCAN STATUS
+# =========================================================
+
+if scan_completed:
+
+    result_count = len(rows)
+
+    if result_count:
+
+        st.success(
+            f"Scan complete — "
+            f"{result_count} result"
+            f"{'s' if result_count != 1 else ''} returned."
+        )
+
+        # Small summary lets you verify immediately
+        # that the scanner returned data.
+        summary_cols = st.columns(
+            3
+        )
+
+        with summary_cols[0]:
+
+            st.metric(
+                "Results",
+                result_count,
+            )
+
+        with summary_cols[1]:
+
+            bullish_count = sum(
+                1
+                for row in rows
+                if str(
+                    row.get(
+                        "signal",
+                        "",
+                    )
+                ).lower()
+                == "bullish"
+            )
+
+            st.metric(
+                "Bullish",
+                bullish_count,
+            )
+
+        with summary_cols[2]:
+
+            if rows:
+
+                top_return = max(
+                    float(
+                        row.get(
+                            "expected_return",
+                            0,
+                        )
+                        or 0
+                    )
+                    for row in rows
+                )
+
+                st.metric(
+                    "Highest model return",
+                    pct(
+                        top_return * 100
+                    ),
+                )
+
+    else:
+
+        st.warning(
+            "The scanner completed, "
+            "but returned no qualifying results."
+        )
+
+
+# =========================================================
+# AREA DATA
 # =========================================================
 
 area_symbols = {
+
     "Top stocks": [
         "NVDA",
         "MSFT",
@@ -152,26 +278,32 @@ area_symbols = {
 
 
 area_labels = {
+
     "Top stocks": t(
         "area_top_stocks",
         lang,
     ),
+
     "Technology": t(
         "area_technology",
         lang,
     ),
+
     "Healthcare": t(
         "area_healthcare",
         lang,
     ),
+
     "Financials": t(
         "area_financials",
         lang,
     ),
+
     "Consumer": t(
         "area_consumer",
         lang,
     ),
+
     "ETFs": t(
         "area_etfs",
         lang,
@@ -184,12 +316,21 @@ area_labels = {
 # =========================================================
 
 st.subheader(
-    t("top_by_area", lang)
+    t(
+        "top_by_area",
+        lang,
+    )
 )
 
+
 selected_area = st.selectbox(
-    t("area", lang),
-    list(area_symbols),
+    t(
+        "area",
+        lang,
+    ),
+    list(
+        area_symbols
+    ),
     format_func=lambda value:
         area_labels[value],
     label_visibility="collapsed",
@@ -202,22 +343,38 @@ for ticker in area_symbols[
     selected_area
 ]:
 
-    q = quote(ticker)
+    try:
 
-    area_items.append(
-        {
-            "ticker": ticker,
-            "name": security_name(ticker),
-            "price": q.get("price"),
-            "change_pct": q.get(
-                "change_pct"
-            ),
-            "df": history(
-                ticker,
-                "3mo",
-            ),
-        }
-    )
+        q = quote(
+            ticker
+        )
+
+        df = history(
+            ticker,
+            "3mo",
+        )
+
+        area_items.append(
+            {
+                "ticker": ticker,
+                "name": security_name(
+                    ticker
+                ),
+                "price": q.get(
+                    "price"
+                ),
+                "change_pct": q.get(
+                    "change_pct"
+                ),
+                "df": df,
+            }
+        )
+
+    except Exception:
+
+        # One unavailable symbol should
+        # not break the entire Discover page.
+        continue
 
 
 card_row(
@@ -233,7 +390,10 @@ card_row(
 if rows:
 
     st.subheader(
-        t("latest", lang)
+        t(
+            "latest",
+            lang,
+        )
     )
 
     st.caption(
@@ -244,48 +404,92 @@ if rows:
 
     for row in rows[:16]:
 
-        ticker = row["ticker"]
+        ticker = str(
+            row.get(
+                "ticker",
+                "",
+            )
+        ).upper()
 
-        q = quote(ticker)
-        df = history(
-            ticker,
-            "6mo",
-        )
+        if not ticker:
+            continue
+
+        try:
+
+            q = quote(
+                ticker
+            )
+
+        except Exception:
+
+            q = {}
+
+        try:
+
+            df = history(
+                ticker,
+                "6mo",
+            )
+
+        except Exception:
+
+            df = None
 
         items.append(
             {
                 "ticker": ticker,
+
                 "name": security_name(
                     ticker
                 ),
+
                 "price": q.get(
                     "price",
-                    row.get("price"),
+                    row.get(
+                        "price"
+                    ),
                 ),
+
                 "change_pct": q.get(
                     "change_pct",
-                    row.get("change_pct"),
+                    row.get(
+                        "change_pct"
+                    ),
                 ),
+
                 "df": df,
+
                 "signal": row.get(
                     "signal"
                 ),
+
                 "confidence": row.get(
                     "confidence"
                 ),
+
                 "reliability": row.get(
                     "reliability"
                 ),
+
                 "expected_return": row.get(
                     "expected_return"
                 ),
             }
         )
 
-    card_row(
-        items,
-        key_prefix="discover",
-    )
+    if items:
+
+        card_row(
+            items,
+            key_prefix="discover",
+        )
+
+    else:
+
+        st.warning(
+            "Scanner results were returned, "
+            "but none could be displayed."
+        )
 
 
     # =====================================================
@@ -296,10 +500,14 @@ if rows:
         row
         for row in rows
         if str(
-            row.get("signal", "")
+            row.get(
+                "signal",
+                "",
+            )
         ).lower()
         == "bullish"
     ]
+
 
     if bullish:
 
@@ -310,60 +518,99 @@ if rows:
             )
         )
 
-        st.caption(
-            "Stocks currently receiving a bullish model signal"
-        )
-
         bullish_items = []
 
         for row in bullish[:12]:
 
-            ticker = row["ticker"]
+            ticker = str(
+                row.get(
+                    "ticker",
+                    "",
+                )
+            ).upper()
 
-            q = quote(ticker)
+            if not ticker:
+                continue
+
+            try:
+
+                q = quote(
+                    ticker
+                )
+
+            except Exception:
+
+                q = {}
+
+            try:
+
+                df = history(
+                    ticker,
+                    "6mo",
+                )
+
+            except Exception:
+
+                df = None
 
             bullish_items.append(
                 {
                     "ticker": ticker,
+
                     "name": security_name(
                         ticker
                     ),
+
                     "price": q.get(
                         "price",
-                        row.get("price"),
+                        row.get(
+                            "price"
+                        ),
                     ),
+
                     "change_pct": q.get(
                         "change_pct",
                         row.get(
                             "change_pct"
                         ),
                     ),
-                    "df": history(
-                        ticker,
-                        "6mo",
-                    ),
+
+                    "df": df,
+
                     "signal": row.get(
                         "signal"
                     ),
+
                     "confidence": row.get(
                         "confidence"
                     ),
+
                     "reliability": row.get(
                         "reliability"
                     ),
+
                     "expected_return": row.get(
                         "expected_return"
                     ),
                 }
             )
 
-        card_row(
-            bullish_items,
-            key_prefix="discover_bullish",
-        )
+        if bullish_items:
+
+            card_row(
+                bullish_items,
+                key_prefix=(
+                    "discover_bullish"
+                ),
+            )
 
 else:
 
-    st.info(
-        t("no_scan", lang)
-    )
+    if not scan_completed:
+
+        st.info(
+            t(
+                "no_scan",
+                lang,
+            )
+        )

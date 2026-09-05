@@ -5,7 +5,11 @@ import streamlit as st
 from src.auth import ensure_authenticated, current_user
 from src.config import APP_NAME
 from src.storage.database import get_settings
-from src.ui.components import bottom_navigation, inject_theme_css, t
+from src.ui.components import (
+    bottom_navigation,
+    inject_theme_css,
+    t,
+)
 
 
 st.set_page_config(
@@ -48,24 +52,35 @@ valid_pages = {
 
 
 if url_page in valid_pages:
+
     st.session_state["page"] = url_page
+
     if not url_ticker:
-        st.session_state.pop("selected_ticker", None)
+        st.session_state.pop(
+            "selected_ticker",
+            None,
+        )
 
 elif "page" not in st.session_state:
+
     st.session_state["page"] = "home"
 
 
 if url_ticker:
-    st.session_state["selected_ticker"] = str(
-        url_ticker
-    ).upper()
+
+    st.session_state[
+        "selected_ticker"
+    ] = str(url_ticker).upper()
 
 
-page = st.session_state.get("page", "home")
+page = st.session_state.get(
+    "page",
+    "home",
+)
 
 
 with st.sidebar:
+
     st.markdown(
         '<div class="brand">Statix</div>',
         unsafe_allow_html=True,
@@ -79,7 +94,8 @@ with st.sidebar:
     )
 
     st.caption(
-        "Model outputs are research signals, not guarantees or financial advice."
+        "Model outputs are research signals, "
+        "not guarantees or financial advice."
     )
 
 
@@ -92,17 +108,51 @@ labels = {
 
 
 def render_page():
+
     if page == "home":
-        exec(open("src/ui/home_tab.py").read(), globals())
+
+        exec(
+            open(
+                "src/ui/home_tab.py"
+            ).read(),
+            globals(),
+        )
+
     elif page == "stocks":
-        exec(open("src/ui/stocks_tab.py").read(), globals())
+
+        exec(
+            open(
+                "src/ui/stocks_tab.py"
+            ).read(),
+            globals(),
+        )
+
     elif page == "discover":
-        exec(open("src/ui/discover_tab.py").read(), globals())
+
+        exec(
+            open(
+                "src/ui/discover_tab.py"
+            ).read(),
+            globals(),
+        )
+
     elif page == "settings":
-        exec(open("src/ui/settings_tab.py").read(), globals())
+
+        exec(
+            open(
+                "src/ui/settings_tab.py"
+            ).read(),
+            globals(),
+        )
 
 
-# Render navigation first so pages that call st.stop() still expose it.
-bottom_navigation(page, labels)
-
+# Render the actual page first.
 render_page()
+
+# Navigation is fixed to the viewport, while the
+# block-container CSS reserves enough bottom space
+# for it on every page.
+bottom_navigation(
+    page,
+    labels,
+)
