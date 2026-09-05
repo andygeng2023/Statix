@@ -450,25 +450,37 @@ if (
             f"{len(displayed)} sessions"
         )
 
-        fig = go.Figure(
-            go.Scatter(
-                x=displayed.index,
-                y=displayed["close"],
-                mode="lines",
-                line=dict(
-                    width=2,
-                ),
-                hovertemplate=(
-                    "%{x|%Y-%m-%d}"
-                    "<br>$%{y:.2f}"
-                    "<extra></extra>"
-                ),
-            )
-        )
+        chart_data = displayed.copy()
+        chart_data["sma_20"] = chart_data["close"].rolling(20, min_periods=1).mean()
+        chart_data["sma_50"] = chart_data["close"].rolling(50, min_periods=1).mean()
+        fig = go.Figure()
+        fig.add_trace(go.Candlestick(
+            x=chart_data.index,
+            open=chart_data["open"], high=chart_data["high"],
+            low=chart_data["low"], close=chart_data["close"],
+            name="OHLC", increasing_line_color="#198754", decreasing_line_color="#c2413b",
+        ))
+        fig.add_trace(go.Scatter(
+            x=chart_data.index, y=chart_data["sma_20"], name="20D average",
+            mode="lines", line=dict(width=1.5, color="#4159a8"),
+        ))
+        fig.add_trace(go.Scatter(
+            x=chart_data.index, y=chart_data["sma_50"], name="50D average",
+            mode="lines", line=dict(width=1.5, color="#b97916"),
+        ))
+        fig.add_trace(go.Bar(
+            x=chart_data.index, y=chart_data["volume"], name="Volume",
+            yaxis="y2", opacity=.18, marker_color="#526985",
+        ))
 
         _chart_layout(
             fig,
             400,
+        )
+        fig.update_layout(
+            showlegend=True,
+            legend=dict(orientation="h", yanchor="bottom", y=1.01, x=0),
+            yaxis2=dict(overlaying="y", side="right", showgrid=False, title="Volume"),
         )
 
         st.plotly_chart(
@@ -745,6 +757,26 @@ else:
                         "<br>$%{y:.2f}"
                         "<extra></extra>"
                     ),
+                )
+            )
+            forecast_fig.add_trace(
+                go.Scatter(
+                    x=[df.index[-1], *forecast_dates],
+                    y=[last_close, *lower_values],
+                    mode="lines",
+                    line=dict(width=1, dash="dot", color="#9aacc5"),
+                    name="Lower estimate",
+                    hovertemplate="%{x|%Y-%m-%d}<br>$%{y:.2f}<extra></extra>",
+                )
+            )
+            forecast_fig.add_trace(
+                go.Scatter(
+                    x=[df.index[-1], *forecast_dates],
+                    y=[last_close, *upper_values],
+                    mode="lines",
+                    line=dict(width=1, dash="dot", color="#9aacc5"),
+                    name="Upper estimate",
+                    hovertemplate="%{x|%Y-%m-%d}<br>$%{y:.2f}<extra></extra>",
                 )
             )
             forecast_fig.add_trace(

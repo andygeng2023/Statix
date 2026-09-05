@@ -10,6 +10,13 @@ import yfinance as yf
 PROVIDERS = ["auto", "quantdash", "akshare", "yfinance"]
 
 
+def _yahoo_symbol(ticker: str) -> str:
+    symbol = ticker.upper().strip()
+    if symbol.endswith((".SZ", ".SH", ".HK")):
+        return symbol
+    return symbol.replace(".", "-")
+
+
 def _secret(name: str, default=None):
     try:
         import streamlit as st
@@ -256,8 +263,9 @@ def yahoo_history(
     period: str = "5y",
 ) -> pd.DataFrame:
     try:
+        ticker = _yahoo_symbol(ticker)
         data = yf.download(
-            ticker.upper(),
+            ticker,
             period=period,
             interval="1d",
             auto_adjust=True,
@@ -284,7 +292,7 @@ def yahoo_history(
 
 def yahoo_quote(ticker: str) -> dict:
     try:
-        symbol = ticker.upper()
+        symbol = _yahoo_symbol(ticker)
         info = getattr(yf.Ticker(symbol), "fast_info", {}) or {}
 
         price = info.get("last_price") or info.get("regular_market_price")
